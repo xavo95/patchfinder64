@@ -9,7 +9,7 @@ for subdir, dirs, files in os.walk("kernel_caches"):
                 print("----------------")
             is_first = False
             version = f[len("kernelcache_"):]
-            out = subprocess.check_output(["./bin/patchfinder64", os.path.join("kernel_caches", f)]).strip().split("\n")
+            out = subprocess.check_output([os.path.join(".", "bin", "patchfinder64"), os.path.join("kernel_caches", f)]).strip().split("\n")
             fails = []
             for test in out:
                 components = test.split(" - ")
