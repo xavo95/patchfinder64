@@ -416,7 +416,12 @@ follow_cbz(const uint8_t *buf, addr_t cbz)
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+#ifndef NOT_DARWIN
 #include <mach-o/loader.h>
+#else
+#include "mach-o_loader.h"
+#endif
 
 #ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
 #include <mach/mach.h>
@@ -1109,7 +1114,13 @@ find_realhost(addr_t priv)
 }
 
 #ifdef HAVE_MAIN
+
+#ifndef NOT_DARWIN
 #include <mach-o/nlist.h>
+#else
+#include "mach-o_nlist.h"
+#endif
+
 
 addr_t
 find_symbol(const char *symbol)
