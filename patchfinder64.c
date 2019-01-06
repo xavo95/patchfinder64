@@ -1278,57 +1278,49 @@ addr_t find_kernproc(void) {
 }
 
 addr_t find_vnode_recycle(void) {
-    addr_t error_str = find_strref("\"Why am I trying to use VNOP_OPEN() on anything other than the root or a named stream?\"", 1, 0);
+    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, 0);
     error_str -= kerndumpbase;
     
-    addr_t call_to_unknown1 = step64(kernel, error_str + 8, 40*4, INSN_CALL);
-    addr_t call_to_current_proc = step64(kernel, call_to_unknown1 + 4, 40*4, INSN_CALL);
-    addr_t call_to_unknown2 = step64(kernel, call_to_current_proc + 4, 40*4, INSN_CALL);
-    addr_t call_to_unknown3 = step64(kernel, call_to_unknown2 + 4, 40*4, INSN_CALL);
+    addr_t call_to_lck_mtx_unlock = step64(kernel, error_str + 4, 40*4, INSN_CALL);
+    addr_t call_to_unknown1 = step64(kernel, call_to_lck_mtx_unlock + 4, 40*4, INSN_CALL);
+    addr_t offset_to_unknown1 = follow_call64(kernel, call_to_unknown1);
     
-    addr_t call_to_target = step64(kernel, call_to_unknown3 + 4, 40*4, INSN_CALL);
+    addr_t call_to_target = step64(kernel, offset_to_unknown1 + 4, 40*4, INSN_CALL);
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
 
     return offset_to_target + kerndumpbase;
 }
 
 addr_t find_lck_mtx_lock(void) {
-    addr_t error_str = find_strref("%s - _hub->getReportBufferSize(): %x", 1, 1);
-    error_str -= kerndumpbase;
+    addr_t details_str = find_strref("Details", 1, 0);
+    details_str -= kerndumpbase;
 
-    addr_t call_to_unk1 = step64_back(kernel, error_str, 40*4, INSN_CALL);
-    addr_t call_to_stub = step64_back(kernel, call_to_unk1 - 4, 20*4, INSN_CALL);
+    addr_t call_to_target = step64(kernel, details_str + 4, 40*4, INSN_CALL);
+    addr_t offset_to_target = follow_call64(kernel, call_to_target);
 
-    addr_t stub_function = follow_call64(kernel, call_to_stub);
-    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
-    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
-
-    return target_function;
+    return offset_to_target + kerndumpbase;
 }
 
 addr_t find_lck_mtx_unlock(void) {
-    addr_t error_str = find_strref("%s - _hub->getReportBufferSize(): %x", 1, 1);
-    error_str -= kerndumpbase;
+    addr_t details_str = find_strref("Details", 1, 0);
+    details_str -= kerndumpbase;
 
-    addr_t call_to_IOLog1 = step64(kernel, error_str, 40*4, INSN_CALL);
-    addr_t call_to_IOLog2 = step64_back(kernel, call_to_IOLog1 + 4, 20*4, INSN_CALL);
-    addr_t call_to_IOLog3 = step64_back(kernel, call_to_IOLog2 + 4, 20*4, INSN_CALL);
-    addr_t call_to_stub = step64_back(kernel, call_to_IOLog3 + 4, 20*4, INSN_CALL);
+    addr_t call_to_lck_mtx_lock = step64(kernel, details_str + 4, 40*4, INSN_CALL);
+    addr_t call_to_sysctl_register_oid = step64(kernel, call_to_lck_mtx_lock+4, 40*4, INSN_CALL);
+    addr_t call_to_strlcat1 = step64(kernel, call_to_sysctl_register_oid + 4, 40*4, INSN_CALL);
+    addr_t call_to_strlcat2 = step64(kernel, call_to_strlcat1+4, 40*4, INSN_CALL);
 
-    addr_t stub_function = follow_call64(kernel, call_to_stub);
-    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
-    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+    addr_t call_to_target = step64(kernel, call_to_strlcat2 + 4, 40*4, INSN_CALL);
+    addr_t offset_to_target = follow_call64(kernel, call_to_target);
 
-    return target_function;
+    return offset_to_target + kerndumpbase;
 }
 
 addr_t find_strlen(void) {
-    addr_t error_str = find_strref("%d (%d of %d boosts) %s from pid ", 1, 0);
-    error_str -= kerndumpbase;
+    addr_t xnu_str = find_strref("AP-xnu", 1, 0);
+    xnu_str -= kerndumpbase;
 
-    addr_t call_to_snprintf = step64(kernel, error_str, 40*4, INSN_CALL);
-
-    addr_t call_to_target = step64_back(kernel, call_to_snprintf + 4, 20*4, INSN_CALL);
+    addr_t call_to_target = step64(kernel, xnu_str, 40*4, INSN_CALL);
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
 
     return offset_to_target + kerndumpbase;
@@ -1413,11 +1405,7 @@ main(int argc, char **argv)
     addr_t actual_offset = find_symbol(symbol_name); \
     printf("%s: PF=0x%llx - AS=0x%llx - %s\n", symbol_name, patchfinder_offset, actual_offset, (patchfinder_offset == actual_offset ? "PASS" : "FAIL")); \
 } while(0)
-/*
-    addr_t pf_strlen = find_strlen();
-    addr_t actual_strlen = find_symbol("_strlen");
-    printf("PF=0x%llx - AS=0x%llx - %s\n", pf_strlen, actual_strlen, (pf_strlen == actual_strlen ? "PASS" : "FAIL"));
-*/
+
     CHECK(vfs_context_current, "_vfs_context_current");
     CHECK(vnode_lookup, "_vnode_lookup");
     CHECK(vnode_put, "_vnode_put");
@@ -1433,28 +1421,6 @@ main(int argc, char **argv)
     CHECK(lck_mtx_lock, "_lck_mtx_lock");
     CHECK(lck_mtx_unlock, "_lck_mtx_unlock");
     CHECK(strlen, "_strlen");
-
-    /*
-    addr_t AGXCommandQueue_vtable = find_AGXCommandQueue_vtable();
-    printf("\t\t\t<string>0x%llx</string>\n", AGXCommandQueue_vtable - vm_kernel_slide);
-    addr_t OSData_getMetaClass = find_symbol("__ZNK6OSData12getMetaClassEv");
-    printf("\t\t\t<string>0x%llx</string>\n", OSData_getMetaClass);
-    addr_t OSSerializer_serialize = find_symbol("__ZNK12OSSerializer9serializeEP11OSSerialize");
-    printf("\t\t\t<string>0x%llx</string>\n", OSSerializer_serialize);
-    addr_t k_uuid_copy = find_symbol("_uuid_copy");
-    printf("\t\t\t<string>0x%llx</string>\n", k_uuid_copy);
-    addr_t allproc = find_allproc();
-    printf("\t\t\t<string>0x%llx</string>\n", allproc);
-    addr_t realhost = find_realhost(find_symbol("_host_priv_self") + vm_kernel_slide);
-    printf("\t\t\t<string>0x%llx</string>\n", realhost - vm_kernel_slide);
-    addr_t call5 = find_call5();
-    printf("\t\t\t<string>0x%llx</string>\n", call5 - vm_kernel_slide);
-
-    addr_t trustcache = find_trustcache();
-    printf("\t\t\t<string>0x%llx</string>\n", trustcache);
-    addr_t amficache = find_amficache();
-    printf("\t\t\t<string>0x%llx</string>\n", amficache);
-    */
 
     term_kernel();
     return 0;
