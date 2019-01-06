@@ -1113,6 +1113,236 @@ find_realhost(addr_t priv)
     return val + kerndumpbase;
 }
 
+
+
+/*
+ *
+ * @ninjaprawn's patches
+ *
+ */ 
+
+addr_t find_vfs_context_current(void) {
+    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, 0);
+    error_str -= kerndumpbase;
+
+    addr_t call_to_target = step64_back(kernel, error_str, 10*4, INSN_CALL);
+    addr_t offset_to_target = follow_call64(kernel, call_to_target);
+
+    return offset_to_target + kerndumpbase;
+}
+
+addr_t find_vnode_lookup(void) {
+    addr_t hfs_str = find_strref("hfs: journal open cb: error %d looking up device %s (dev uuid %s)\n", 1, 1);
+    hfs_str -= kerndumpbase;
+
+    addr_t call_to_stub = step64_back(kernel, hfs_str, 10*4, INSN_CALL);
+    addr_t stub_function = follow_call64(kernel, call_to_stub);
+    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+
+    return target_function;
+}
+
+addr_t find_vnode_put(void) {
+    addr_t err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", 1, 1);
+    err_str -= kerndumpbase;
+
+    addr_t call_to_os_log = step64(kernel, err_str, 20*4, INSN_CALL);
+    addr_t call_to_vn_getpath = step64(kernel, call_to_os_log + 4, 20*4, INSN_CALL);
+    addr_t call_to_stub = step64(kernel, call_to_vn_getpath + 4, 20*4, INSN_CALL);
+
+    addr_t stub_function = follow_call64(kernel, call_to_stub);
+    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+
+    return target_function;
+}
+
+addr_t find_vnode_getfromfd(void) {
+    addr_t call1, call2, call3, call4, call5, call6, call7;
+    addr_t func1;
+
+    addr_t ent_str = find_strref("rootless_storage_class_entitlement", 1, 1);
+    ent_str -= kerndumpbase;
+
+    addr_t call_to_unk1 = step64(kernel, ent_str, 20*4, INSN_CALL);
+    addr_t call_to_strlcpy = step64(kernel, call_to_unk1 + 4, 20*4, INSN_CALL);
+    addr_t call_to_strlcat = step64(kernel, call_to_strlcpy + 4, 20*4, INSN_CALL);
+    addr_t call_to_unk2 = step64(kernel, call_to_strlcat + 4, 20*4, INSN_CALL);
+    addr_t call_to_unk3 = step64(kernel, call_to_unk2 + 4, 20*4, INSN_CALL);
+    addr_t call_to_vfs_context_create = step64(kernel, call_to_unk3 + 4, 20*4, INSN_CALL);
+    addr_t call_to_stub = step64(kernel, call_to_vfs_context_create + 4, 20*4, INSN_CALL);
+
+    addr_t stub_function = follow_call64(kernel, call_to_stub);
+    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+
+    return target_function;
+}
+
+addr_t find_vnode_getattr(void) {
+    addr_t error_str = find_strref("\"add_fsevent: you can't pass me a NULL vnode ptr (type %d)!\\n\"", 1, 0);
+    error_str -= kerndumpbase;
+    error_str += 12; // Jump over the panic call
+
+    addr_t call_to_target = step64(kernel, error_str, 30*4, INSN_CALL);
+    addr_t offset_to_target = follow_call64(kernel, call_to_target);
+
+    return offset_to_target + kerndumpbase;
+}
+
+addr_t find_SHA1Init(void) {
+    addr_t id_str = find_strref("CrashReporter-ID", 1, 1);
+    id_str -= kerndumpbase;
+
+    addr_t call_to_hash_function = step64(kernel, id_str, 10*4, INSN_CALL);
+    addr_t hash_function = follow_call64(kernel, call_to_hash_function);
+    addr_t call_to_stub = step64(kernel, hash_function, 20*4, INSN_CALL);
+
+    addr_t stub_function = follow_call64(kernel, call_to_stub);
+    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+
+    return target_function;
+}
+
+addr_t find_SHA1Update(void) {
+    addr_t id_str = find_strref("CrashReporter-ID", 1, 1);
+    id_str -= kerndumpbase;
+
+    addr_t call_to_hash_function = step64(kernel, id_str, 10*4, INSN_CALL);
+    addr_t hash_function = follow_call64(kernel, call_to_hash_function);
+    addr_t call_to_sha1init = step64(kernel, hash_function, 20*4, INSN_CALL);
+    addr_t call_to_stub = step64(kernel, call_to_sha1init + 4, 20*4, INSN_CALL);
+
+    addr_t stub_function = follow_call64(kernel, call_to_stub);
+    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+
+    return target_function;
+}
+
+
+addr_t find_SHA1Final(void) {
+    addr_t id_str = find_strref("CrashReporter-ID", 1, 1);
+    id_str -= kerndumpbase;
+
+    addr_t call_to_hash_function = step64(kernel, id_str, 10*4, INSN_CALL);
+    addr_t hash_function = follow_call64(kernel, call_to_hash_function);
+    addr_t call_to_sha1init = step64(kernel, hash_function, 20*4, INSN_CALL);
+    addr_t call_to_sha1update = step64(kernel, call_to_sha1init + 4, 20*4, INSN_CALL);
+    addr_t call_to_stub = step64(kernel, call_to_sha1update + 4, 20*4, INSN_CALL);
+
+    addr_t stub_function = follow_call64(kernel, call_to_stub);
+    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+
+    return target_function;
+}
+
+addr_t find_csblob_entitlements_dictionary_set(void) {
+    addr_t ent_str = find_strref("entitlements are not a dictionary", 1, 1);
+    ent_str -= kerndumpbase;
+
+    addr_t call_to_lck_mtx_lock = step64(kernel, ent_str, 20*4, INSN_CALL);
+    addr_t call_to_csblob_entitlements_dictionary_copy = step64(kernel, call_to_lck_mtx_lock + 4, 20*4, INSN_CALL);
+    addr_t call_to_stub = step64(kernel, call_to_csblob_entitlements_dictionary_copy + 4, 20*4, INSN_CALL);
+
+    addr_t stub_function = follow_call64(kernel, call_to_stub);
+    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+
+    return target_function;
+}
+
+addr_t find_kernel_task(void) {
+    addr_t term_str = find_strref("\"thread_terminate\"", 1, 0);
+    term_str -= kerndumpbase;
+
+    addr_t thread_terminate = bof64(kernel, xnucore_base, term_str);
+    addr_t call_to_unk1 = step64(kernel, thread_terminate, 20*4, INSN_CALL);
+
+    addr_t kern_task = calc64(kernel, thread_terminate, call_to_unk1, 9);
+    return kern_task + kerndumpbase;
+}
+
+
+addr_t find_kernproc(void) {
+    addr_t ret_str = find_strref("\"returning child proc which is not cur_act\"", 1, 0);
+    ret_str -= kerndumpbase;
+
+    addr_t end_of_function = step64(kernel, ret_str, 20*4, INSN_RET);
+
+    addr_t kernproc = calc64(kernel, ret_str, end_of_function, 19);
+    return kernproc + kerndumpbase;
+}
+
+addr_t find_vnode_recycle(void) {
+    addr_t error_str = find_strref("\"Why am I trying to use VNOP_OPEN() on anything other than the root or a named stream?\"", 1, 0);
+    error_str -= kerndumpbase;
+    
+    addr_t call_to_unknown1 = step64(kernel, error_str + 8, 40*4, INSN_CALL);
+    addr_t call_to_current_proc = step64(kernel, call_to_unknown1 + 4, 40*4, INSN_CALL);
+    addr_t call_to_unknown2 = step64(kernel, call_to_current_proc + 4, 40*4, INSN_CALL);
+    addr_t call_to_unknown3 = step64(kernel, call_to_unknown2 + 4, 40*4, INSN_CALL);
+    
+    addr_t call_to_target = step64(kernel, call_to_unknown3 + 4, 40*4, INSN_CALL);
+    addr_t offset_to_target = follow_call64(kernel, call_to_target);
+
+    return offset_to_target + kerndumpbase;
+}
+
+addr_t find_lck_mtx_lock(void) {
+    addr_t error_str = find_strref("%s - _hub->getReportBufferSize(): %x", 1, 1);
+    error_str -= kerndumpbase;
+
+    addr_t call_to_unk1 = step64_back(kernel, error_str, 40*4, INSN_CALL);
+    addr_t call_to_stub = step64_back(kernel, call_to_unk1 - 4, 20*4, INSN_CALL);
+
+    addr_t stub_function = follow_call64(kernel, call_to_stub);
+    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+
+    return target_function;
+}
+
+addr_t find_lck_mtx_unlock(void) {
+    addr_t error_str = find_strref("%s - _hub->getReportBufferSize(): %x", 1, 1);
+    error_str -= kerndumpbase;
+
+    addr_t call_to_IOLog1 = step64(kernel, error_str, 40*4, INSN_CALL);
+    addr_t call_to_IOLog2 = step64_back(kernel, call_to_IOLog1 + 4, 20*4, INSN_CALL);
+    addr_t call_to_IOLog3 = step64_back(kernel, call_to_IOLog2 + 4, 20*4, INSN_CALL);
+    addr_t call_to_stub = step64_back(kernel, call_to_IOLog3 + 4, 20*4, INSN_CALL);
+
+    addr_t stub_function = follow_call64(kernel, call_to_stub);
+    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+
+    return target_function;
+}
+
+addr_t find_strlen(void) {
+    addr_t error_str = find_strref("%d (%d of %d boosts) %s from pid ", 1, 0);
+    error_str -= kerndumpbase;
+
+    addr_t call_to_snprintf = step64(kernel, error_str, 40*4, INSN_CALL);
+
+    addr_t call_to_target = step64_back(kernel, call_to_snprintf + 4, 20*4, INSN_CALL);
+    addr_t offset_to_target = follow_call64(kernel, call_to_target);
+
+    return offset_to_target + kerndumpbase;
+}
+
+
+/*
+ *
+ * 
+ *
+ */
+
+
+
 #ifdef HAVE_MAIN
 
 #ifndef NOT_DARWIN
@@ -1134,7 +1364,7 @@ find_symbol(const char *symbol)
         is64 = 4;
     }
 
-    /* XXX will only work on a decrypted kernel */
+/* XXX will only work on a decrypted kernel */
     if (!kernel_delta) {
         return 0;
     }
@@ -1178,6 +1408,33 @@ main(int argc, char **argv)
     rv = init_kernel(base, (argc > 1) ? argv[1] : "krnl");
     assert(rv == 0);
 
+#define CHECK(name, symbol_name) do { \
+    addr_t patchfinder_offset = find_ ##name (); \
+    addr_t actual_offset = find_symbol(symbol_name); \
+    printf("%s: PF=0x%llx - AS=0x%llx - %s\n", symbol_name, patchfinder_offset, actual_offset, (patchfinder_offset == actual_offset ? "PASS" : "FAIL")); \
+} while(0)
+/*
+    addr_t pf_strlen = find_strlen();
+    addr_t actual_strlen = find_symbol("_strlen");
+    printf("PF=0x%llx - AS=0x%llx - %s\n", pf_strlen, actual_strlen, (pf_strlen == actual_strlen ? "PASS" : "FAIL"));
+*/
+    CHECK(vfs_context_current, "_vfs_context_current");
+    CHECK(vnode_lookup, "_vnode_lookup");
+    CHECK(vnode_put, "_vnode_put");
+    CHECK(vnode_getfromfd, "_vnode_getfromfd");
+    CHECK(vnode_getattr, "_vnode_getattr");
+    CHECK(SHA1Init, "_SHA1Init");
+    CHECK(SHA1Update, "_SHA1Update");
+    CHECK(SHA1Final, "_SHA1Final");
+    CHECK(csblob_entitlements_dictionary_set, "_csblob_entitlements_dictionary_set");
+    CHECK(kernel_task, "_kernel_task");
+    CHECK(kernproc, "_kernproc");
+    CHECK(vnode_recycle, "_vnode_recycle");
+    CHECK(lck_mtx_lock, "_lck_mtx_lock");
+    CHECK(lck_mtx_unlock, "_lck_mtx_unlock");
+    CHECK(strlen, "_strlen");
+
+    /*
     addr_t AGXCommandQueue_vtable = find_AGXCommandQueue_vtable();
     printf("\t\t\t<string>0x%llx</string>\n", AGXCommandQueue_vtable - vm_kernel_slide);
     addr_t OSData_getMetaClass = find_symbol("__ZNK6OSData12getMetaClassEv");
@@ -1197,6 +1454,7 @@ main(int argc, char **argv)
     printf("\t\t\t<string>0x%llx</string>\n", trustcache);
     addr_t amficache = find_amficache();
     printf("\t\t\t<string>0x%llx</string>\n", amficache);
+    */
 
     term_kernel();
     return 0;
