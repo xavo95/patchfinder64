@@ -13,4 +13,4 @@ To run the tests, you must do the following:
 2. Run `make patchfinder64`
 3. Run `python test_versions.py`
 
-This will return what version have their patchfinders working correctly, and will tell you which functions are not finding the correct values.
+This will return what version have their patchfinders working correctly, and will tell you which functions are not finding the correct values (PF = Patch Finder, AS = Actual Symbol).
