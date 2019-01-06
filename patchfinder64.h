@@ -28,5 +28,20 @@ uint64_t find_sysbootnonce(void);
 uint64_t find_trustcache(void);
 uint64_t find_amficache(void);
 uint64_t find_allproc(void);
+uint64_t find_vfs_context_current(void);
+uint64_t find_vnode_lookup(void);
+uint64_t find_vnode_put(void);
+uint64_t find_vnode_getfromfd(void);
+uint64_t find_vnode_getattr(void);
+uint64_t find_SHA1Init(void);
+uint64_t find_SHA1Update(void);
+uint64_t find_SHA1Final(void);
+uint64_t find_csblob_entitlements_dictionary_set(void);
+uint64_t find_kernel_task(void);
+uint64_t find_kernproc(void);
+uint64_t find_vnode_recycle(void);
+uint64_t find_lck_mtx_lock(void);
+uint64_t find_lck_mtx_unlock(void);
+uint64_t find_strlen(void);
 
 #endif
