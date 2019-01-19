@@ -603,7 +603,10 @@ init_kernel(addr_t base, const char *filename)
 void
 term_kernel(void)
 {
-    if (kernel != NULL) free(kernel);
+    if (kernel != NULL) {
+        free(kernel);
+        kernel = NULL;
+    }
 }
 
 /* these operate on VA ******************************************************/
