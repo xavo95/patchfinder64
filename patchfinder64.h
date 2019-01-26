@@ -43,6 +43,12 @@ uint64_t find_vnode_recycle(void);
 uint64_t find_lck_mtx_lock(void);
 uint64_t find_lck_mtx_unlock(void);
 uint64_t find_strlen(void);
+uint64_t find_add_x0_x0_0x40_ret(void);
 uint64_t find_boottime(void);
+uint64_t find_zone_map_ref(void);
+uint64_t find_OSBoolean_True(void);
+uint64_t find_osunserializexml(void);
+uint64_t find_smalloc(void);
+uint64_t find_shenanigans(void);
 
 #endif

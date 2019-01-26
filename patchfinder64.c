@@ -1001,7 +1001,7 @@ find_trustcache(void)
         return 0;
     }
     call = step64(kernel, follow_cbz(kernel, cbz), 4, INSN_CALL);
-  okay:
+okay:
     if (!call) {
         return 0;
     }
@@ -1011,7 +1011,45 @@ find_trustcache(void)
     }
     val = calc64(kernel, func, func + 16, 8);
     if (!val) {
-        return 0;
+        ref = find_strref("%s: only allowed process can check the trust cache", 1, 1); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
+        if (!ref) {
+            return 0;
+        }
+        ref -= kerndumpbase;
+        call = step64_back(kernel, ref, 11 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        func = follow_call64(kernel, call);
+        if (!func) {
+            return 0;
+        }
+        call = step64(kernel, func, 8 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        func = follow_call64(kernel, call);
+        if (!func) {
+            return 0;
+        }
+        call = step64(kernel, func, 8 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        call = step64(kernel, call + 4, 8 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        func = follow_call64(kernel, call);
+        if (!func) {
+            return 0;
+        }
+        call = step64(kernel, func, 12 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        
+        val = calc64(kernel, call, call + 6 * 4, 21);
     }
     return val + kerndumpbase;
 }
@@ -1019,7 +1057,7 @@ find_trustcache(void)
 addr_t
 find_amficache(void)
 {
-    addr_t cbz, call, func, bof, val;
+    addr_t cbz, call, func, val;
     addr_t ref = find_strref("amfi_prevent_old_entitled_platform_binaries", 1, 1);
     if (!ref) {
         // iOS 11
@@ -1041,7 +1079,7 @@ find_amficache(void)
         return 0;
     }
     call = step64(kernel, follow_cbz(kernel, cbz), 4, INSN_CALL);
-  okay:
+okay:
     if (!call) {
         return 0;
     }
@@ -1049,13 +1087,47 @@ find_amficache(void)
     if (!func) {
         return 0;
     }
-    bof = bof64(kernel, func - 256, func);
-    if (!bof) {
-        return 0;
-    }
-    val = calc64(kernel, bof, func, 9);
+    val = calc64(kernel, func, func + 16, 8);
     if (!val) {
-        return 0;
+        ref = find_strref("%s: only allowed process can check the trust cache", 1, 1); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
+        if (!ref) {
+            return 0;
+        }
+        ref -= kerndumpbase;
+        call = step64_back(kernel, ref, 11 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        func = follow_call64(kernel, call);
+        if (!func) {
+            return 0;
+        }
+        call = step64(kernel, func, 8 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        func = follow_call64(kernel, call);
+        if (!func) {
+            return 0;
+        }
+        call = step64(kernel, func, 8 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        call = step64(kernel, call + 4, 8 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        func = follow_call64(kernel, call);
+        if (!func) {
+            return 0;
+        }
+        call = step64(kernel, func, 12 * 4, INSN_CALL);
+        if (!call) {
+            return 0;
+        }
+        
+        val = calc64(kernel, call, call + 6 * 4, 21);
     }
     return val + kerndumpbase;
 }
@@ -1155,8 +1227,6 @@ find_realhost(addr_t priv)
     }
     return val + kerndumpbase;
 }
-
-
 
 /*
  *
@@ -1369,6 +1439,24 @@ addr_t find_strlen(void) {
     return offset_to_target + kerndumpbase;
 }
 
+addr_t find_add_x0_x0_0x40_ret(void)
+{
+    addr_t off;
+    uint32_t* k;
+    k = (uint32_t*)(kernel + xnucore_base);
+    for (off = 0; off < xnucore_size - 4; off += 4, k++) {
+        if (k[0] == 0x91010000 && k[1] == 0xD65F03C0) {
+            return off + xnucore_base + kerndumpbase;
+        }
+    }
+    k = (uint32_t*)(kernel + prelink_base);
+    for (off = 0; off < prelink_size - 4; off += 4, k++) {
+        if (k[0] == 0x91010000 && k[1] == 0xD65F03C0) {
+            return off + prelink_base + kerndumpbase;
+        }
+    }
+    return 0;
+}
 
 /*
  *
@@ -1421,6 +1509,146 @@ addr_t find_boottime(void) {
  *
  */
 
+/*
+ *
+ * @stek29's patches
+ *
+ */
+
+addr_t find_zone_map_ref(void)
+{
+    // \"Nothing being freed to the zone_map. start = end = %p\\n\"
+    uint64_t val = kerndumpbase;
+    
+    addr_t ref = find_strref("\"Nothing being freed to the zone_map. start = end = %p\\n\"", 1, 0);
+    ref -= kerndumpbase;
+    
+    // skip add & adrp for panic str
+    ref -= 8;
+    
+    // adrp xX, #_zone_map@PAGE
+    ref = step64_back(kernel, ref, 30, INSN_ADRP);
+    
+    uint32_t* insn = (uint32_t*)(kernel + ref);
+    // get pc
+    val += ((uint8_t*)(insn)-kernel) & ~0xfff;
+    uint8_t xm = *insn & 0x1f;
+    
+    // don't ask, I wrote this at 5am
+    val += (*insn << 9 & 0x1ffffc000) | (*insn >> 17 & 0x3000);
+    
+    // ldr x, [xX, #_zone_map@PAGEOFF]
+    ++insn;
+    if ((*insn & 0xF9C00000) != 0xF9400000) {
+        return 0;
+    }
+    
+    // xd == xX, xn == xX,
+    if ((*insn & 0x1f) != xm || ((*insn >> 5) & 0x1f) != xm) {
+        return 0;
+    }
+    
+    val += ((*insn >> 10) & 0xFFF) << 3;
+    
+    return val;
+}
+
+addr_t find_OSBoolean_True(void)
+{
+    addr_t val;
+    addr_t ref = find_strref("Delay Autounload", 0, 0);
+    if (!ref) {
+        return 0;
+    }
+    ref -= kerndumpbase;
+    
+    addr_t weird_instruction = 0;
+    for (int i = 4; i < 4 * 0x100; i += 4) {
+        uint32_t op = *(uint32_t*)(kernel + ref + i);
+        if (op == 0x320003E0) {
+            weird_instruction = ref + i;
+            break;
+        }
+    }
+    if (!weird_instruction) {
+        return 0;
+    }
+    
+    val = calc64(kernel, ref, weird_instruction, 8);
+    if (!val) {
+        return 0;
+    }
+    
+    return val + kerndumpbase;
+}
+
+addr_t find_osunserializexml(void)
+{
+    addr_t ref = find_strref("OSUnserializeXML: %s near line %d\n", 1, 0);
+    ref -= kerndumpbase;
+    uint64_t start = bof64(kernel, xnucore_base, ref);
+    return start + kerndumpbase;
+}
+
+addr_t find_smalloc(void)
+{
+    addr_t ref = find_strref("sandbox memory allocation failure", 1, 1);
+    ref -= kerndumpbase;
+    uint64_t start = bof64(kernel, prelink_base, ref);
+    return start + kerndumpbase;
+}
+
+addr_t find_shenanigans(void)
+{
+    addr_t ref = find_strref("\"shenanigans!", 1, 1);
+    ref -= kerndumpbase;
+    
+    // find sb_evaluate
+    ref = bof64(kernel, prelink_base, ref);
+    
+    // ADRP Xm, #_is_kernel_cred_kerncred@PAGE
+    ref = step64(kernel, ref, 0x100, 0x90000000, 0x9F000000);
+    
+    // pc base
+    uint64_t val = kerndumpbase;
+    
+    uint32_t* insn = (uint32_t*)(kernel + ref);
+    // add pc (well, offset)
+    val += ((uint8_t*)(insn)-kernel) & ~0xfff;
+    uint8_t xm = *insn & 0x1f;
+    
+    // add imm: immhi(bits 23-5)|immlo(bits 30-29)
+    val += (*insn << 9 & 0x1ffffc000) | (*insn >> 17 & 0x3000);
+    
+    ++insn;
+    // LDR Xn, [Xm,#_is_kernel_cred_kerncred@PAGEOFF]
+    if ((*insn & 0xF9C00000) != 0xF9400000) {
+        return 0;
+    }
+    if (((*insn >> 5) & 0x1f) != xm) {
+        return 0;
+    }
+    // add pageoff
+    val += ((*insn >> 10) & 0xFFF) << 3;
+    uint8_t xn = (*insn & 0x1f);
+    
+    ++insn;
+    // CBNZ Xn, ...
+    if ((*insn & 0xFC000000) != 0xB4000000) {
+        return 0;
+    }
+    if ((*insn & 0x1f) != xn) {
+        return 0;
+    }
+    
+    return val;
+}
+
+/*
+ *
+ *
+ *
+ */
 
 #ifdef HAVE_MAIN
 
