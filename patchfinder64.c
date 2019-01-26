@@ -120,7 +120,7 @@ static int DecodeBitMasks(unsigned immN, unsigned imms, unsigned immr, int immed
 	if (len < 1) {
 		return -1;
 	}
-	levels = ZeroExtendOnes(len, 6);
+	levels = (unsigned int)ZeroExtendOnes(len, 6);
 	if (immediate && (imms & levels) == levels) {
 		return -1;
 	}
