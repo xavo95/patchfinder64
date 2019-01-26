@@ -442,6 +442,12 @@ follow_cbz(const uint8_t *buf, addr_t cbz)
 size_t kread(uint64_t where, void *p, size_t size);
 #endif
 
+enum string_bases {
+    string_base_cstring = 0,
+    string_base_pstring,
+    string_base_oslstring
+};
+
 static uint8_t *kernel = NULL;
 static size_t kernel_size = 0;
 
@@ -453,6 +459,8 @@ static addr_t cstring_base = 0;
 static addr_t cstring_size = 0;
 static addr_t pstring_base = 0;
 static addr_t pstring_size = 0;
+static addr_t oslstring_base = 0;
+static addr_t oslstring_size = 0;
 static addr_t kerndumpbase = -1;
 static addr_t kernel_entry = 0;
 static void *kernel_mh = 0;
@@ -523,6 +531,9 @@ init_kernel(addr_t base, const char *filename)
                     if (!strcmp(sec[j].sectname, "__cstring")) {
                         cstring_base = sec[j].addr;
                         cstring_size = sec[j].size;
+                    } else if (!strcmp(sec[j].sectname, "__os_log")) {
+                        oslstring_base = sec[j].addr - kerndumpbase;
+                        oslstring_size = sec[j].size - kerndumpbase;
                     }
                 }
             }
@@ -559,6 +570,7 @@ init_kernel(addr_t base, const char *filename)
     prelink_base -= kerndumpbase;
     cstring_base -= kerndumpbase;
     pstring_base -= kerndumpbase;
+    oslstring_base -= kerndumpbase;
     kernel_size = max - min;
 
 #ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
@@ -677,14 +689,27 @@ find_reference(addr_t to, int n, int prelink)
 }
 
 addr_t
-find_strref(const char *string, int n, int prelink)
+find_strref(const char *string, int n, enum string_bases string_base)
 {
     uint8_t *str;
-    addr_t base = cstring_base;
-    addr_t size = cstring_size;
-    if (prelink) {
-        base = pstring_base;
-        size = pstring_size;
+    addr_t base;
+    addr_t size;
+    int prelink = 0;
+    switch (string_base) {
+        case string_base_oslstring:
+            base = oslstring_base;
+            size = oslstring_size;
+            break;
+        case string_base_pstring:
+            base = pstring_base;
+            size = pstring_size;
+            prelink = 1;
+            break;
+        case string_base_cstring:
+        default:
+            base = cstring_base;
+            size = cstring_size;
+            break;
     }
     str = boyermoore_horspool_memmem(kernel + base, size, (uint8_t *)string, strlen(string));
     if (!str) {
