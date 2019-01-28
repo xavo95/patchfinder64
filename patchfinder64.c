@@ -13,6 +13,7 @@
 #include <stdbool.h>
 
 typedef unsigned long long addr_t;
+static addr_t kerndumpbase = -1;
 
 #define IS64(image) (*(uint8_t *)(image) & 1)
 
@@ -241,18 +242,23 @@ bof64(const uint8_t *buf, addr_t start, addr_t where)
         uint32_t op = *(uint32_t *)(buf + where);
         if ((op & 0xFFC003FF) == 0x910003FD) {
             unsigned delta = (op >> 10) & 0xFFF;
-            //printf("%x: ADD X29, SP, #0x%x\n", where, delta);
+            //printf("0x%llx: ADD X29, SP, #0x%x\n", where + kerndumpbase, delta);
             if ((delta & 0xF) == 0) {
                 addr_t prev = where - ((delta >> 4) + 1) * 4;
                 uint32_t au = *(uint32_t *)(buf + prev);
+                //printf("0x%llx: (%llx & %llx) == %llx\n", prev + kerndumpbase, au, 0x3BC003E0, au & 0x3BC003E0);
                 if ((au & 0x3BC003E0) == 0x298003E0) {
                     //printf("%x: STP x, y, [SP,#-imm]!\n", prev);
+                    return prev;
+                } else if ((au & 0x7F8003FF) == 0x510003FF) {
+                    //printf("%x: SUB SP, SP, #imm\n", prev);
                     return prev;
                 }
                 for (addr_t diff = 4; diff < delta/4+4; diff+=4) {
                     uint32_t ai = *(uint32_t *)(buf + where - diff);
                     // SUB SP, SP, #imm
-                    if ((ai&0xFFC003FF) == 0xD10003FF) {
+                    //printf("0x%llx: (%llx & %llx) == %llx\n", where - diff + kerndumpbase, ai, 0x3BC003E0, ai & 0x3BC003E0);
+                    if ((ai & 0x7F8003FF) == 0x510003FF) {
                         return where - diff;
                     }
                     // Not stp and not str
@@ -470,7 +476,6 @@ static addr_t pstring_base = 0;
 static addr_t pstring_size = 0;
 static addr_t oslstring_base = 0;
 static addr_t oslstring_size = 0;
-static addr_t kerndumpbase = -1;
 static addr_t kernel_entry = 0;
 static void *kernel_mh = 0;
 static addr_t kernel_delta = 0;
@@ -2065,6 +2070,7 @@ addr_t find_shenanigans(void)
     
     // find sb_evaluate
     ref = bof64(kernel, prelink_base, ref);
+    //printf("sb_evaluate: 0x%llx\n", ref + kerndumpbase);
     
     if (!ref) {
         return 0;
