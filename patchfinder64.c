@@ -1723,6 +1723,10 @@ main(int argc, char **argv)
     addr_t actual_offset = find_symbol(symbol_name); \
     printf("%s: PF=0x%llx - AS=0x%llx - %s\n", symbol_name, patchfinder_offset, actual_offset, (patchfinder_offset == actual_offset ? "PASS" : "FAIL")); \
 } while(0)
+#define FIND(name) do { \
+    addr_t patchfinder_offset = find_ ##name (); \
+    printf("%s: PF=0x%llx - %s\n", #name, patchfinder_offset, (patchfinder_offset != 0 ? "PASS" : "FAIL")); \
+} while(0)
 
     CHECK(vfs_context_current, "_vfs_context_current");
     CHECK(vnode_lookup, "_vnode_lookup");
@@ -1739,6 +1743,12 @@ main(int argc, char **argv)
     CHECK(lck_mtx_lock, "_lck_mtx_lock");
     CHECK(lck_mtx_unlock, "_lck_mtx_unlock");
     CHECK(strlen, "_strlen");
+    FIND(add_x0_x0_0x40_ret);
+    FIND(zone_map_ref);
+    FIND(OSBoolean_True);
+    FIND(osunserializexml);
+    FIND(smalloc);
+    FIND(shenanigans);
 
     term_kernel();
     return 0;
