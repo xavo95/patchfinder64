@@ -1,7 +1,7 @@
 #ifndef PATCHFINDER64_H_
 #define PATCHFINDER64_H_
 
-int init_kernel(uint64_t base, const char *filename);
+int init_kernel(size_t (*kread)(uint64_t, void *, size_t), uint64_t kernel_base, const char *filename);
 void term_kernel(void);
 
 enum { SearchInCore, SearchInPrelink };

@@ -9,7 +9,7 @@ Patches written by myself are included here. These include patches from async_wa
 This fork includes a testing portion, allowing us to confirm that the results returned from the patchfinder are valid.
 
 To run the tests, you must do the following:
-1. Run `./fetch_kerncaches`, or run `python ./fetch_kerncaches`. **Please note this will download 8 iOS versions**, and extract and decompress the kernelcaches. You can change which versions of iOS are to be downloaded in the file.
+1. Run `./fetch_kerncaches`, or run `python ./fetch_kerncaches`. **Please note this will download 13 iOS versions**, and extract and decompress the kernelcaches. You can change which versions of iOS are to be downloaded in the file.
 2. Run `make patchfinder64`
 3. Run `python test_versions.py`
 

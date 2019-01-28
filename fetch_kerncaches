@@ -16,7 +16,7 @@ ipsw_urls = {}
 for ipsw in ipsw_list:
     ipsw_urls[ipsw["version"]] = ipsw["url"]
 
-intended_firmwares = ["11.0", "11.0.3", "11.1", "11.1.2", "11.2", "11.2.6", "11.3.1", "11.4.1", "12.0", "12.0", "12.0.1", "12.0.2", "12.1", "12.1.1"]
+intended_firmwares = ["11.0", "11.0.3", "11.1", "11.1.2", "11.2", "11.2.6", "11.3.1", "11.4.1", "12.0", "12.0.1", "12.0.2", "12.1", "12.1.1"]
 
 # Translated from BootX-81//bootx.tproj/sl.subproj/lzss.c
 N = 4096

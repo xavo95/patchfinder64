@@ -9,6 +9,8 @@
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
+#include <errno.h>
+#include <stdbool.h>
 
 typedef unsigned long long addr_t;
 
@@ -19,6 +21,14 @@ typedef unsigned long long addr_t;
 /* generic stuff *************************************************************/
 
 #define UCHAR_MAX 255
+
+/* these operate on VA ******************************************************/
+
+#define INSN_RET  0xD65F03C0, 0xFFFFFFFF
+#define INSN_CALL 0x94000000, 0xFC000000
+#define INSN_B    0x14000000, 0xFC000000
+#define INSN_CBZ  0x34000000, 0xFC000000
+#define INSN_ADRP 0x90000000, 0x9F000000
 
 static unsigned char *
 boyermoore_horspool_memmem(const unsigned char* haystack, size_t hlen,
@@ -405,7 +415,7 @@ calc64mov(const uint8_t *buf, addr_t start, addr_t end, int which)
 static addr_t
 find_call64(const uint8_t *buf, addr_t start, size_t length)
 {
-    return step64(buf, start, length, 0x94000000, 0xFC000000);
+    return step64(buf, start, length, INSN_CALL);
 }
 
 static addr_t
@@ -439,7 +449,6 @@ follow_cbz(const uint8_t *buf, addr_t cbz)
 
 #ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
 #include <mach/mach.h>
-size_t kread(uint64_t where, void *p, size_t size);
 #endif
 
 enum string_bases {
@@ -467,7 +476,7 @@ static void *kernel_mh = 0;
 static addr_t kernel_delta = 0;
 
 int
-init_kernel(addr_t base, const char *filename)
+init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const char *filename)
 {
     size_t rv;
     uint8_t buf[0x4000];
@@ -477,10 +486,20 @@ init_kernel(addr_t base, const char *filename)
     addr_t min = -1;
     addr_t max = 0;
     int is64 = 0;
+    
+#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
+    if (!kread || !kernel_base) {
+        return -1;
+    }
+#else    /* __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ */
+    if (!filename) {
+        return -1;
+    }
+#endif    /* __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ */
 
 #ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
 #define close(f)
-    rv = kread(base, buf, sizeof(buf));
+    rv = kread(kernel_base, buf, sizeof(buf));
     if (rv != sizeof(buf)) {
         return -1;
     }
@@ -584,7 +603,7 @@ init_kernel(addr_t base, const char *filename)
         return -1;
     }
 
-    kernel_mh = kernel + base - min;
+    kernel_mh = kernel + kernel_base - min;
 
     (void)filename;
 #undef close
@@ -618,7 +637,7 @@ init_kernel(addr_t base, const char *filename)
 
     close(fd);
 
-    (void)base;
+    (void)kernel_base;
 #endif	/* __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ */
     return 0;
 }
@@ -631,14 +650,6 @@ term_kernel(void)
         kernel = NULL;
     }
 }
-
-/* these operate on VA ******************************************************/
-
-#define INSN_RET  0xD65F03C0, 0xFFFFFFFF
-#define INSN_CALL 0x94000000, 0xFC000000
-#define INSN_B    0x14000000, 0xFC000000
-#define INSN_CBZ  0x34000000, 0xFC000000
-#define INSN_ADRP 0x90000000, 0x9F000000
 
 addr_t
 find_register_value(addr_t where, int reg)
@@ -723,7 +734,7 @@ addr_t
 find_gPhysBase(void)
 {
     addr_t ret, val;
-    addr_t ref = find_strref("\"pmap_map_high_window_bd: insufficient pages", 1, 0);
+    addr_t ref = find_strref("\"pmap_map_high_window_bd: insufficient pages", true, false);
     if (!ref) {
         return 0;
     }
@@ -751,7 +762,7 @@ addr_t
 find_kernel_pmap(void)
 {
     addr_t call, bof, val;
-    addr_t ref = find_strref("\"pmap_map_bd\"", 1, 0);
+    addr_t ref = find_strref("\"pmap_map_bd\"", true, false);
     if (!ref) {
         return 0;
     }
@@ -775,7 +786,7 @@ addr_t
 find_amfiret(void)
 {
     addr_t ret;
-    addr_t ref = find_strref("AMFI: hook..execve() killing pid %u: %s\n", 1, 1);
+    addr_t ref = find_strref("AMFI: hook..execve() killing pid %u: %s\n", true, true);
     if (!ref) {
         return 0;
     }
@@ -811,7 +822,7 @@ addr_t
 find_amfi_memcmpstub(void)
 {
     addr_t call, dest, reg;
-    addr_t ref = find_strref("%s: Possible race detected. Rejecting.", 1, 1);
+    addr_t ref = find_strref("%s: Possible race detected. Rejecting.", true, true);
     if (!ref) {
         return 0;
     }
@@ -852,7 +863,7 @@ addr_t
 find_lwvm_mapio_patch(void)
 {
     addr_t call, dest, reg;
-    addr_t ref = find_strref("_mapForIO", 1, 1);
+    addr_t ref = find_strref("_mapForIO", true, true);
     if (!ref) {
         return 0;
     }
@@ -880,7 +891,7 @@ addr_t
 find_lwvm_mapio_newj(void)
 {
     addr_t call;
-    addr_t ref = find_strref("_mapForIO", 1, 1);
+    addr_t ref = find_strref("_mapForIO", true, true);
     if (!ref) {
         return 0;
     }
@@ -980,10 +991,10 @@ addr_t
 find_trustcache(void)
 {
     addr_t cbz, call, func, val;
-    addr_t ref = find_strref("amfi_prevent_old_entitled_platform_binaries", 1, 1);
+    addr_t ref = find_strref("amfi_prevent_old_entitled_platform_binaries", true, true);
     if (!ref) {
         // iOS 11
-        ref = find_strref("com.apple.MobileFileIntegrity", 0, 1);
+        ref = find_strref("com.apple.MobileFileIntegrity", false, true);
         if (!ref) {
             return 0;
         }
@@ -1011,7 +1022,7 @@ okay:
     }
     val = calc64(kernel, func, func + 16, 8);
     if (!val) {
-        ref = find_strref("%s: only allowed process can check the trust cache", 1, 1); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
+        ref = find_strref("%s: only allowed process can check the trust cache", true, true); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
         if (!ref) {
             return 0;
         }
@@ -1058,10 +1069,10 @@ addr_t
 find_amficache(void)
 {
     addr_t cbz, call, func, val;
-    addr_t ref = find_strref("amfi_prevent_old_entitled_platform_binaries", 1, 1);
+    addr_t ref = find_strref("amfi_prevent_old_entitled_platform_binaries", true, true);
     if (!ref) {
         // iOS 11
-        ref = find_strref("com.apple.MobileFileIntegrity", 0, 1);
+        ref = find_strref("com.apple.MobileFileIntegrity", false, true);
         if (!ref) {
             return 0;
         }
@@ -1089,7 +1100,7 @@ okay:
     }
     val = calc64(kernel, func, func + 16, 8);
     if (!val) {
-        ref = find_strref("%s: only allowed process can check the trust cache", 1, 1); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
+        ref = find_strref("%s: only allowed process can check the trust cache", true, true); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
         if (!ref) {
             return 0;
         }
@@ -1141,7 +1152,7 @@ addr_t
 find_AGXCommandQueue_vtable(void)
 {
     addr_t val, str8;
-    addr_t ref = find_strref("AGXCommandQueue", 1, 1);
+    addr_t ref = find_strref("AGXCommandQueue", true, true);
     if (!ref) {
         return 0;
     }
@@ -1169,7 +1180,7 @@ addr_t
 find_allproc(void)
 {
     addr_t val, bof, str8;
-    addr_t ref = find_strref("\"pgrp_add : pgrp is dead adding process\"", 1, 0);
+    addr_t ref = find_strref("\"pgrp_add : pgrp is dead adding process\"", true, false);
     if (!ref) {
         return 0;
     }
@@ -1235,41 +1246,111 @@ find_realhost(addr_t priv)
  */ 
 
 addr_t find_vfs_context_current(void) {
-    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, 0);
+    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", true, false);
+    
+    if (!error_str) {
+        return 0;
+    }
+    
     error_str -= kerndumpbase;
 
     addr_t call_to_target = step64_back(kernel, error_str, 10*4, INSN_CALL);
+    
+    if (!call_to_target) {
+        return 0;
+    }
+    
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
+    
+    if (!offset_to_target) {
+        return 0;
+    }
 
     return offset_to_target + kerndumpbase;
 }
 
 addr_t find_vnode_lookup(void) {
-    addr_t hfs_str = find_strref("hfs: journal open cb: error %d looking up device %s (dev uuid %s)\n", 1, 1);
+    addr_t hfs_str = find_strref("hfs: journal open cb: error %d looking up device %s (dev uuid %s)\n", true, true);
+    
+    if (!hfs_str) {
+        return 0;
+    }
+    
     hfs_str -= kerndumpbase;
 
     addr_t call_to_stub = step64_back(kernel, hfs_str, 10*4, INSN_CALL);
+    
+    if (!call_to_stub) {
+        return 0;
+    }
+    
     addr_t stub_function = follow_call64(kernel, call_to_stub);
+    
+    if (!stub_function) {
+        return 0;
+    }
+    
     addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    
+    if (!target_function_offset) {
+        return 0;
+    }
+    
     addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+    
+    if (!target_function) {
+        return 0;
+    }
 
     return target_function;
 }
 
 addr_t find_vnode_put(void) {
-    addr_t err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", 1, 1);
-    if (err_str == 0)
-	    err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, 1);
+    addr_t err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", true, true);
+    if (!err_str)
+	    err_str = find_strref("getparent(%p) != parent_vp(%p)", true, true);
+    
+    if (!err_str) {
+        return 0;
+    }
 
     err_str -= kerndumpbase;
 
     addr_t call_to_os_log = step64(kernel, err_str, 20*4, INSN_CALL);
+    
+    if (!call_to_os_log) {
+        return 0;
+    }
+    
     addr_t call_to_vn_getpath = step64(kernel, call_to_os_log + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_vn_getpath) {
+        return 0;
+    }
+    
     addr_t call_to_stub = step64(kernel, call_to_vn_getpath + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_stub) {
+        return 0;
+    }
 
     addr_t stub_function = follow_call64(kernel, call_to_stub);
+    
+    if (!stub_function) {
+        return 0;
+    }
+    
     addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    
+    if (!target_function_offset) {
+        return 0;
+    }
+    
     addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+    
+    if (!target_function) {
+        return 0;
+    }
 
     return target_function;
 }
@@ -1278,166 +1359,497 @@ addr_t find_vnode_getfromfd(void) {
     addr_t call1, call2, call3, call4, call5, call6, call7;
     addr_t func1;
 
-    addr_t ent_str = find_strref("rootless_storage_class_entitlement", 1, 1);
+    addr_t ent_str = find_strref("rootless_storage_class_entitlement", true, true);
+    
+    if (!ent_str) {
+        return 0;
+    }
+    
     ent_str -= kerndumpbase;
 
     addr_t call_to_unk1 = step64(kernel, ent_str, 20*4, INSN_CALL);
+    
+    if (!call_to_unk1) {
+        return 0;
+    }
+    
     addr_t call_to_strlcpy = step64(kernel, call_to_unk1 + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_strlcpy) {
+        return 0;
+    }
+    
     addr_t call_to_strlcat = step64(kernel, call_to_strlcpy + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_strlcat) {
+        return 0;
+    }
+    
     addr_t call_to_unk2 = step64(kernel, call_to_strlcat + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_unk2) {
+        return 0;
+    }
+    
     addr_t call_to_unk3 = step64(kernel, call_to_unk2 + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_unk3) {
+        return 0;
+    }
+    
     addr_t call_to_vfs_context_create = step64(kernel, call_to_unk3 + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_vfs_context_create) {
+        return 0;
+    }
+    
     addr_t call_to_stub = step64(kernel, call_to_vfs_context_create + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_stub) {
+        return 0;
+    }
 
     addr_t stub_function = follow_call64(kernel, call_to_stub);
+    
+    if (!stub_function) {
+        return 0;
+    }
+    
     addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    
+    if (!target_function_offset) {
+        return 0;
+    }
+    
     addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+    
+    if (!target_function) {
+        return 0;
+    }
 
     return target_function;
 }
 
 addr_t find_vnode_getattr(void) {
-    addr_t error_str = find_strref("\"add_fsevent: you can't pass me a NULL vnode ptr (type %d)!\\n\"", 1, 0);
+    addr_t error_str = find_strref("\"add_fsevent: you can't pass me a NULL vnode ptr (type %d)!\\n\"", true, false);
+    
+    if (!error_str) {
+        return 0;
+    }
+    
     error_str -= kerndumpbase;
     error_str += 12; // Jump over the panic call
 
     addr_t call_to_target = step64(kernel, error_str, 30*4, INSN_CALL);
+    
+    if (!call_to_target) {
+        return 0;
+    }
+    
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
+    
+    if (!offset_to_target) {
+        return 0;
+    }
 
     return offset_to_target + kerndumpbase;
 }
 
 addr_t find_SHA1Init(void) {
-    addr_t id_str = find_strref("CrashReporter-ID", 1, 1);
+    addr_t id_str = find_strref("CrashReporter-ID", true, true);
+    
+    if (!id_str) {
+        return 0;
+    }
+    
     id_str -= kerndumpbase;
 
     addr_t call_to_hash_function = step64(kernel, id_str, 10*4, INSN_CALL);
+    
+    if (!call_to_hash_function) {
+        return 0;
+    }
+    
     addr_t hash_function = follow_call64(kernel, call_to_hash_function);
+    
+    if (!hash_function) {
+        return 0;
+    }
+    
     addr_t call_to_stub = step64(kernel, hash_function, 20*4, INSN_CALL);
+    
+    if (!call_to_stub) {
+        return 0;
+    }
 
     addr_t stub_function = follow_call64(kernel, call_to_stub);
+    
+    if (!stub_function) {
+        return 0;
+    }
+    
     addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    
+    if (!target_function_offset) {
+        return 0;
+    }
+    
     addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+    
+    if (!target_function) {
+        return 0;
+    }
 
     return target_function;
 }
 
 addr_t find_SHA1Update(void) {
-    addr_t id_str = find_strref("CrashReporter-ID", 1, 1);
+    addr_t id_str = find_strref("CrashReporter-ID", true, true);
     id_str -= kerndumpbase;
 
     addr_t call_to_hash_function = step64(kernel, id_str, 10*4, INSN_CALL);
+    
+    if (!call_to_hash_function) {
+        return 0;
+    }
+    
     addr_t hash_function = follow_call64(kernel, call_to_hash_function);
+    
+    if (!hash_function) {
+        return 0;
+    }
+    
     addr_t call_to_sha1init = step64(kernel, hash_function, 20*4, INSN_CALL);
+    
+    if (!call_to_sha1init) {
+        return 0;
+    }
+    
     addr_t call_to_stub = step64(kernel, call_to_sha1init + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_stub) {
+        return 0;
+    }
 
     addr_t stub_function = follow_call64(kernel, call_to_stub);
+    
+    if (!stub_function) {
+        return 0;
+    }
+    
     addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    
+    if (!target_function_offset) {
+        return 0;
+    }
+    
     addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+    
+    if (!target_function) {
+        return 0;
+    }
 
     return target_function;
 }
 
 
 addr_t find_SHA1Final(void) {
-    addr_t id_str = find_strref("CrashReporter-ID", 1, 1);
+    addr_t id_str = find_strref("CrashReporter-ID", true, true);
+    
+    if (!id_str) {
+        return 0;
+    }
+    
     id_str -= kerndumpbase;
 
     addr_t call_to_hash_function = step64(kernel, id_str, 10*4, INSN_CALL);
+    
+    if (!call_to_hash_function) {
+        return 0;
+    }
+    
     addr_t hash_function = follow_call64(kernel, call_to_hash_function);
+    
+    if (!hash_function) {
+        return 0;
+    }
+    
     addr_t call_to_sha1init = step64(kernel, hash_function, 20*4, INSN_CALL);
+    
+    if (!call_to_sha1init) {
+        return 0;
+    }
+    
     addr_t call_to_sha1update = step64(kernel, call_to_sha1init + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_sha1update) {
+        return 0;
+    }
+    
     addr_t call_to_stub = step64(kernel, call_to_sha1update + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_stub) {
+        return 0;
+    }
 
     addr_t stub_function = follow_call64(kernel, call_to_stub);
+    
+    if (!stub_function) {
+        return 0;
+    }
+    
     addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    
+    if (!target_function_offset) {
+        return 0;
+    }
+    
     addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+    
+    if (!target_function) {
+        return 0;
+    }
 
     return target_function;
 }
 
 addr_t find_csblob_entitlements_dictionary_set(void) {
-    addr_t ent_str = find_strref("entitlements are not a dictionary", 1, 1);
+    addr_t ent_str = find_strref("entitlements are not a dictionary", true, true);
+    
+    if (!ent_str) {
+        return 0;
+    }
+    
     ent_str -= kerndumpbase;
 
     addr_t call_to_lck_mtx_lock = step64(kernel, ent_str, 20*4, INSN_CALL);
+    
+    if (!call_to_lck_mtx_lock) {
+        return 0;
+    }
+    
     addr_t call_to_csblob_entitlements_dictionary_copy = step64(kernel, call_to_lck_mtx_lock + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_csblob_entitlements_dictionary_copy) {
+        return 0;
+    }
+    
     addr_t call_to_stub = step64(kernel, call_to_csblob_entitlements_dictionary_copy + 4, 20*4, INSN_CALL);
+    
+    if (!call_to_stub) {
+        return 0;
+    }
 
     addr_t stub_function = follow_call64(kernel, call_to_stub);
+    
+    if (!stub_function) {
+        return 0;
+    }
+    
     addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
+    
+    if (!target_function_offset) {
+        return 0;
+    }
+    
     addr_t target_function = *(addr_t*)(kernel+target_function_offset);
+    
+    if (!target_function) {
+        return 0;
+    }
 
     return target_function;
 }
 
 addr_t find_kernel_task(void) {
-    addr_t term_str = find_strref("\"thread_terminate\"", 1, 0);
+    addr_t term_str = find_strref("\"thread_terminate\"", true, false);
+    
+    if (!term_str) {
+        return 0;
+    }
+    
     term_str -= kerndumpbase;
 
     addr_t thread_terminate = bof64(kernel, xnucore_base, term_str);
+    
+    if (!thread_terminate) {
+        return 0;
+    }
+    
     addr_t call_to_unk1 = step64(kernel, thread_terminate, 20*4, INSN_CALL);
+    
+    if (!call_to_unk1) {
+        return 0;
+    }
 
     addr_t kern_task = calc64(kernel, thread_terminate, call_to_unk1, 9);
+    
+    if (!kern_task) {
+        return 0;
+    }
+    
     return kern_task + kerndumpbase;
 }
 
 
 addr_t find_kernproc(void) {
-    addr_t ret_str = find_strref("\"returning child proc which is not cur_act\"", 1, 0);
+    addr_t ret_str = find_strref("\"returning child proc which is not cur_act\"", true, false);
+    
+    if (!ret_str) {
+        return 0;
+    }
+    
     ret_str -= kerndumpbase;
 
     addr_t end_of_function = step64(kernel, ret_str, 20*4, INSN_RET);
+    
+    if (!end_of_function) {
+        return 0;
+    }
 
     addr_t kernproc = calc64(kernel, ret_str, end_of_function, 19);
+    
+    if (!kernproc) {
+        return 0;
+    }
+    
     return kernproc + kerndumpbase;
 }
 
 addr_t find_vnode_recycle(void) {
-    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, 0);
+    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", true, false);
+    
+    if (!error_str) {
+        return 0;
+    }
+    
     error_str -= kerndumpbase;
     
     addr_t call_to_lck_mtx_unlock = step64(kernel, error_str + 4, 40*4, INSN_CALL);
+    
+    if (!call_to_lck_mtx_unlock) {
+        return 0;
+    }
+    
     addr_t call_to_unknown1 = step64(kernel, call_to_lck_mtx_unlock + 4, 40*4, INSN_CALL);
+    
+    if (!call_to_unknown1) {
+        return 0;
+    }
+    
     addr_t offset_to_unknown1 = follow_call64(kernel, call_to_unknown1);
     
+    if (!offset_to_unknown1) {
+        return 0;
+    }
+    
     addr_t call_to_target = step64(kernel, offset_to_unknown1 + 4, 40*4, INSN_CALL);
+    
+    if (!call_to_target) {
+        return 0;
+    }
+    
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
+    
+    if (!offset_to_target) {
+        return 0;
+    }
 
     return offset_to_target + kerndumpbase;
 }
 
 addr_t find_lck_mtx_lock(void) {
-    addr_t details_str = find_strref("Details", 1, 0);
+    addr_t details_str = find_strref("Details", true, false);
+    
+    if (!details_str) {
+        return 0;
+    }
+    
     details_str -= kerndumpbase;
 
     addr_t call_to_target = step64(kernel, details_str + 4, 40*4, INSN_CALL);
+    
+    if (!call_to_target) {
+        return 0;
+    }
+    
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
+    
+    if (!offset_to_target) {
+        return 0;
+    }
 
     return offset_to_target + kerndumpbase;
 }
 
 addr_t find_lck_mtx_unlock(void) {
-    addr_t details_str = find_strref("Details", 1, 0);
+    addr_t details_str = find_strref("Details", true, false);
+    
+    if (!details_str) {
+        return 0;
+    }
+    
     details_str -= kerndumpbase;
 
     addr_t call_to_lck_mtx_lock = step64(kernel, details_str + 4, 40*4, INSN_CALL);
+    
+    if (!call_to_lck_mtx_lock) {
+        return 0;
+    }
+    
     addr_t call_to_sysctl_register_oid = step64(kernel, call_to_lck_mtx_lock+4, 40*4, INSN_CALL);
+    
+    if (!call_to_sysctl_register_oid) {
+        return 0;
+    }
+    
     addr_t call_to_strlcat1 = step64(kernel, call_to_sysctl_register_oid + 4, 40*4, INSN_CALL);
+    
+    if (!call_to_strlcat1) {
+        return 0;
+    }
+    
     addr_t call_to_strlcat2 = step64(kernel, call_to_strlcat1+4, 40*4, INSN_CALL);
 
+    if (!call_to_strlcat2) {
+        return 0;
+    }
+    
     addr_t call_to_target = step64(kernel, call_to_strlcat2 + 4, 40*4, INSN_CALL);
+    
+    if (!call_to_target) {
+        return 0;
+    }
+    
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
+    
+    if (!offset_to_target) {
+        return 0;
+    }
 
     return offset_to_target + kerndumpbase;
 }
 
 addr_t find_strlen(void) {
-    addr_t xnu_str = find_strref("AP-xnu", 1, 0);
+    addr_t xnu_str = find_strref("AP-xnu", true, false);
+    
+    if (!xnu_str) {
+        return 0;
+    }
+    
     xnu_str -= kerndumpbase;
 
     addr_t call_to_target = step64(kernel, xnu_str, 40*4, INSN_CALL);
+    
+    if (!call_to_target) {
+        return 0;
+    }
+    
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
+    
+    if (!offset_to_target) {
+        return 0;
+    }
 
     return offset_to_target + kerndumpbase;
 }
@@ -1475,10 +1887,19 @@ addr_t find_add_x0_x0_0x40_ret(void)
 
 addr_t find_boottime(void) {
     addr_t ref = find_strref("%s WARNING: PMU offset is less then sys PMU", 1, string_base_oslstring);
+    
+    if (!ref) {
+        return 0;
+    }
+    
     ref -= kerndumpbase;
 
     // ADRP Xm, #_boottime@PAGE
     ref = step64(kernel, ref, 0x4D, INSN_ADRP);
+    
+    if (!ref) {
+        return 0;
+    }
 
     // pc base
     uint64_t val = kerndumpbase;
@@ -1523,7 +1944,12 @@ addr_t find_zone_map_ref(void)
     // \"Nothing being freed to the zone_map. start = end = %p\\n\"
     uint64_t val = kerndumpbase;
     
-    addr_t ref = find_strref("\"Nothing being freed to the zone_map. start = end = %p\\n\"", 1, 0);
+    addr_t ref = find_strref("\"Nothing being freed to the zone_map. start = end = %p\\n\"", true, false);
+    
+    if (!ref) {
+        return 0;
+    }
+    
     ref -= kerndumpbase;
     
     // skip add & adrp for panic str
@@ -1531,6 +1957,10 @@ addr_t find_zone_map_ref(void)
     
     // adrp xX, #_zone_map@PAGE
     ref = step64_back(kernel, ref, 30, INSN_ADRP);
+    
+    if (!ref) {
+        return 0;
+    }
     
     uint32_t* insn = (uint32_t*)(kernel + ref);
     // get pc
@@ -1559,7 +1989,7 @@ addr_t find_zone_map_ref(void)
 addr_t find_OSBoolean_True(void)
 {
     addr_t val;
-    addr_t ref = find_strref("Delay Autounload", 0, 0);
+    addr_t ref = find_strref("Delay Autounload", false, false);
     if (!ref) {
         return 0;
     }
@@ -1587,30 +2017,65 @@ addr_t find_OSBoolean_True(void)
 
 addr_t find_osunserializexml(void)
 {
-    addr_t ref = find_strref("OSUnserializeXML: %s near line %d\n", 1, 0);
+    addr_t ref = find_strref("OSUnserializeXML: %s near line %d\n", true, false);
+    
+    if (!ref) {
+        return 0;
+    }
+    
     ref -= kerndumpbase;
+    
     uint64_t start = bof64(kernel, xnucore_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+    
     return start + kerndumpbase;
 }
 
 addr_t find_smalloc(void)
 {
-    addr_t ref = find_strref("sandbox memory allocation failure", 1, 1);
+    addr_t ref = find_strref("sandbox memory allocation failure", true, true);
+    
+    if (!ref) {
+        return 0;
+    }
+    
     ref -= kerndumpbase;
+    
     uint64_t start = bof64(kernel, prelink_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+
     return start + kerndumpbase;
 }
 
 addr_t find_shenanigans(void)
 {
-    addr_t ref = find_strref("\"shenanigans!", 1, 1);
+    addr_t ref = find_strref("\"shenanigans!", true, true);
+    
+    if (!ref) {
+        return 0;
+    }
+    
     ref -= kerndumpbase;
     
     // find sb_evaluate
     ref = bof64(kernel, prelink_base, ref);
     
+    if (!ref) {
+        return 0;
+    }
+    
     // ADRP Xm, #_is_kernel_cred_kerncred@PAGE
-    ref = step64(kernel, ref, 0x100, 0x90000000, 0x9F000000);
+    ref = step64(kernel, ref, 0x100, INSN_ADRP);
+    
+    if (!ref) {
+        return 0;
+    }
     
     // pc base
     uint64_t val = kerndumpbase;
@@ -1665,6 +2130,10 @@ addr_t find_shenanigans(void)
 addr_t
 find_symbol(const char *symbol)
 {
+    if (!symbol) {
+        return 0;
+    }
+    
     unsigned i;
     const struct mach_header *hdr = kernel_mh;
     const uint8_t *q;
@@ -1712,22 +2181,33 @@ find_symbol(const char *symbol)
 int
 main(int argc, char **argv)
 {
+    if (argc < 2) {
+        printf("Usage: patchfinder64 _decompressed_kernel_image_\n");
+        printf("iOS ARM64 kernel patchfinder\n");
+        exit(EXIT_FAILURE);
+    }
+    if (access(argv[1], F_OK) != 0) {
+        printf("%s: %s\n", argv[1], strerror(errno));
+        exit(EXIT_FAILURE);
+    }
     int rv;
-    addr_t base = 0;
+    addr_t kernel_base = 0;
     const addr_t vm_kernel_slide = 0;
-    rv = init_kernel(base, (argc > 1) ? argv[1] : "krnl");
-    assert(rv == 0);
+    if (init_kernel(NULL, kernel_base, argv[1]) != 0) {
+        printf("Failed to prepare kernel\n");
+        exit(EXIT_FAILURE);
+    }
 
 #define CHECK(name, symbol_name) do { \
     addr_t patchfinder_offset = find_ ##name (); \
     addr_t actual_offset = find_symbol(symbol_name); \
     printf("%s: PF=0x%llx - AS=0x%llx - %s\n", symbol_name, patchfinder_offset, actual_offset, (patchfinder_offset == actual_offset ? "PASS" : "FAIL")); \
-} while(0)
+} while(false)
 #define FIND(name) do { \
     addr_t patchfinder_offset = find_ ##name (); \
     printf("%s: PF=0x%llx - %s\n", #name, patchfinder_offset, (patchfinder_offset != 0 ? "PASS" : "FAIL")); \
-} while(0)
-
+} while(false)
+    
     CHECK(vfs_context_current, "_vfs_context_current");
     CHECK(vnode_lookup, "_vnode_lookup");
     CHECK(vnode_put, "_vnode_put");
@@ -1743,8 +2223,9 @@ main(int argc, char **argv)
     CHECK(lck_mtx_lock, "_lck_mtx_lock");
     CHECK(lck_mtx_unlock, "_lck_mtx_unlock");
     CHECK(strlen, "_strlen");
-    FIND(trustcache);
     FIND(add_x0_x0_0x40_ret);
+    FIND(trustcache);
+    FIND(boottime);
     FIND(zone_map_ref);
     FIND(OSBoolean_True);
     FIND(osunserializexml);
@@ -1752,7 +2233,7 @@ main(int argc, char **argv)
     FIND(shenanigans);
 
     term_kernel();
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 #endif	/* HAVE_MAIN */
