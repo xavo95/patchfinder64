@@ -1258,6 +1258,9 @@ addr_t find_vnode_lookup(void) {
 
 addr_t find_vnode_put(void) {
     addr_t err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", 1, 1);
+    if (err_str == 0)
+	    err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, 1);
+
     err_str -= kerndumpbase;
 
     addr_t call_to_os_log = step64(kernel, err_str, 20*4, INSN_CALL);
