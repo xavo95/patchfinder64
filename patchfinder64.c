@@ -1743,6 +1743,7 @@ main(int argc, char **argv)
     CHECK(lck_mtx_lock, "_lck_mtx_lock");
     CHECK(lck_mtx_unlock, "_lck_mtx_unlock");
     CHECK(strlen, "_strlen");
+    FIND(trustcache);
     FIND(add_x0_x0_0x40_ret);
     FIND(zone_map_ref);
     FIND(OSBoolean_True);
