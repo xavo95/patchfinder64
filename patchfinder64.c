@@ -235,6 +235,11 @@ step64_back(const uint8_t *buf, addr_t start, size_t length, uint32_t what, uint
     return 0;
 }
 
+step_adrp_to_reg(const uint8_t *buf, addr_t start, size_t length, int reg)
+{
+    return step64(buf, start, length, 0x90000000 | (reg&0x1F), 0x9F00001F);
+}
+
 static addr_t
 bof64(const uint8_t *buf, addr_t start, addr_t where)
 {
@@ -1001,7 +1006,7 @@ find_trustcache(void)
         // iOS 12
         ref -= kerndumpbase;
 
-        ref = step64(kernel, ref, 0x200, 0x9000001A, 0x9F00001F);
+        ref = step_adrp_to_reg(kernel, ref, 0x200, 26);
         if (!ref)
             return 0;
 
