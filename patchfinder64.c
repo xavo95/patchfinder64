@@ -993,18 +993,6 @@ find_sysbootnonce(void)
 }
 
 addr_t
-find_spinlock_panic(void)
-{
-    addr_t ref = find_strref("\"Spinlock timeout after %llu ticks,", true, false);
-    if (!ref)
-        return 0;
-
-    ref -= kerndumpbase;
-
-    return step64_back(kernel, ref, 0x100, 0xd2800009, 0xffffffff);
-}
-
-addr_t
 find_trustcache(void)
 {
     addr_t cbz, call, func, val;
@@ -1013,22 +1001,11 @@ find_trustcache(void)
         // iOS 12
         ref -= kerndumpbase;
 
-        addr_t spr = find_spinlock_panic();
-        if (!spr)
+        ref = step64(kernel, ref, 0x200, 0x9000001A, 0x9F00001F);
+        if (!ref)
             return 0;
 
-        call = 0;
-        for (int i=0; i<12; i++) {
-            ref = find_call64(kernel, ref + 4, 0x100);
-            if (follow_call64(kernel, ref) == spr) {
-                call = ref;
-                break;
-            }
-        }
-        if (!call)
-            return 0;
-
-        val = calc64(kernel, call + 4, call + 4 * 3, 8);
+        val = calc64(kernel, ref, ref + 8, 8);
         if (!val)
             return 0;
 
