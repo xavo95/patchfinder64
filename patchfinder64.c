@@ -2250,7 +2250,7 @@ main(int argc, char **argv)
 } while(false)
 #define FIND(name) do { \
     addr_t patchfinder_offset = find_ ##name (); \
-    printf("%s: PF=0x%llx - %s\n", #name, patchfinder_offset, (patchfinder_offset != 0 ? "PASS" : "FAIL")); \
+    printf("%s: PF=0x%llx - %s\n", #name, patchfinder_offset, (patchfinder_offset != 0 && patchfinder_offset != kerndumpbase)? "PASS" : "FAIL"); \
 } while(false)
     
     CHECK(vfs_context_current, "_vfs_context_current");
