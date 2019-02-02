@@ -1023,7 +1023,7 @@ find_trustcache(void)
         if (!cbz)
             return 0;
 
-        return val + kerndumpbase;
+        return val + 8 + kerndumpbase;
     }
     ref = find_strref("amfi_prevent_old_entitled_platform_binaries", true, true);
     if (!ref) {
