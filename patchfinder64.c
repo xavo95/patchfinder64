@@ -235,6 +235,7 @@ step64_back(const uint8_t *buf, addr_t start, size_t length, uint32_t what, uint
     return 0;
 }
 
+static addr_t
 step_adrp_to_reg(const uint8_t *buf, addr_t start, size_t length, int reg)
 {
     return step64(buf, start, length, 0x90000000 | (reg&0x1F), 0x9F00001F);
@@ -1006,12 +1007,20 @@ find_trustcache(void)
         // iOS 12
         ref -= kerndumpbase;
 
-        ref = step_adrp_to_reg(kernel, ref, 0x200, 26);
-        if (!ref)
+        uint64_t adrp = step_adrp_to_reg(kernel, ref, 0x200, 26);
+        if (!adrp)
+            adrp = step_adrp_to_reg(kernel, ref, 0x200, 25);
+
+        if (!adrp)
             return 0;
 
-        val = calc64(kernel, ref, ref + 8, 8);
+        val = calc64(kernel, adrp, adrp + 8, 8);
         if (!val)
+            return 0;
+
+        // Make sure cbz is after this
+        cbz = step64(kernel, adrp + 8, adrp + 12, INSN_CBZ);
+        if (!cbz)
             return 0;
 
         return val + kerndumpbase;
@@ -1536,6 +1545,10 @@ addr_t find_SHA1Init(void) {
 
 addr_t find_SHA1Update(void) {
     addr_t id_str = find_strref("CrashReporter-ID", true, true);
+    if (!id_str) {
+        return 0;
+    }
+
     id_str -= kerndumpbase;
 
     addr_t call_to_hash_function = step64(kernel, id_str, 10*4, INSN_CALL);
@@ -2257,7 +2270,7 @@ main(int argc, char **argv)
     CHECK(strlen, "_strlen");
     FIND(add_x0_x0_0x40_ret);
     FIND(trustcache);
-    FIND(boottime);
+    //FIND(boottime);  // I don't care
     FIND(zone_map_ref);
     FIND(OSBoolean_True);
     FIND(osunserializexml);
