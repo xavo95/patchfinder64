@@ -51,5 +51,7 @@ uint64_t find_osunserializexml(void);
 uint64_t find_smalloc(void);
 uint64_t find_shenanigans(void);
 uint64_t find_move_snapshot_to_purgatory(void);
+uint64_t find_chgproccnt(void);
+uint64_t find_kauth_cred_ref(void);
 
 #endif

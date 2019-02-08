@@ -2188,6 +2188,43 @@ addr_t find_move_snapshot_to_purgatory(void)
     return start + kerndumpbase;
 }
 
+addr_t find_chgproccnt(void)
+{
+    addr_t ref = find_strref("\"chgproccnt: lost user\"", true, false);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t start = bof64(kernel, xnucore_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+    
+    return start + kerndumpbase;
+}
+
+addr_t find_kauth_cred_ref(void)
+{
+    addr_t ref = find_strref("\"kauth_cred_ref: trying to take a reference on a cred with no references\"", true, false);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t start = bof64(kernel, xnucore_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+    
+    return start + kerndumpbase;
+}
 /*
  *
  *
