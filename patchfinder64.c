@@ -2163,6 +2163,37 @@ addr_t find_shenanigans(void)
  *
  */
 
+/*
+ *
+ * @pwn20wnd's patches
+ *
+ */
+
+addr_t find_move_snapshot_to_purgatory(void)
+{
+    addr_t ref = find_strref("move_snapshot_to_purgatory", true, true);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t start = bof64(kernel, prelink_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+    
+    return start + kerndumpbase;
+}
+
+/*
+ *
+ *
+ *
+ */
+
 #ifdef HAVE_MAIN
 
 #ifndef NOT_DARWIN
@@ -2270,7 +2301,7 @@ main(int argc, char **argv)
     CHECK(strlen, "_strlen");
     FIND(add_x0_x0_0x40_ret);
     FIND(trustcache);
-    //FIND(boottime);  // I don't care
+    FIND(move_snapshot_to_purgatory);
     FIND(zone_map_ref);
     FIND(OSBoolean_True);
     FIND(osunserializexml);
