@@ -2281,6 +2281,25 @@ addr_t find_apfs_jhash_getvnode(void)
     return start + kerndumpbase;
 }
 
+addr_t find_fs_lookup_snapshot_metadata_by_name() {
+    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, 1), func = 0, call = 0;
+    if (!ref) return 0;
+
+    ref -= kerndumpbase;
+
+    for (int i = 0; i < 11; i++) {
+        call = step64_back(kernel, ref, 256, INSN_CALL);
+        if (!call) return 0;
+
+        ref = call - 4;
+    }
+
+    func = follow_call64(kernel, call);
+    if (!func) return 0;
+
+    return func + kerndumpbase;
+}
+
 addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
     uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, 1), func = 0, call = 0;
     if (!ref) return 0;
@@ -2291,12 +2310,21 @@ addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
         call = step64_back(kernel, ref, 256, INSN_CALL);
         if (!call) return 0;
        
-        func = follow_call64(kernel, call);
-        if (!func) return 0;
-       
         ref = call - 4;
     }
    
+    func = follow_call64(kernel, call);
+    if (!func) return 0;
+
+    // Verify we got the right function
+    uint64_t sub = find_fs_lookup_snapshot_metadata_by_name();
+    if (!sub) return 0;
+
+    call = step64(kernel, ref, 256, INSN_CALL);
+    if (!call) return 0;
+
+    if (follow_call64(kernel, call) != func) return 0;
+
     return func + kerndumpbase;
 }
 
@@ -2420,6 +2448,7 @@ main(int argc, char **argv)
     FIND(osunserializexml);
     FIND(smalloc);
     FIND(shenanigans);
+    FIND(fs_lookup_snapshot_metadata_by_name_and_return_name);
 
     term_kernel();
     return EXIT_SUCCESS;
