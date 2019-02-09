@@ -2225,6 +2225,26 @@ addr_t find_kauth_cred_ref(void)
     
     return start + kerndumpbase;
 }
+
+addr_t find_apfs_jhash_getvnode(void)
+{
+    addr_t ref = find_strref("apfs_jhash_getvnode", true, true);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t start = bof64(kernel, prelink_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+    
+    return start + kerndumpbase;
+}
+
 /*
  *
  *
@@ -2339,6 +2359,7 @@ main(int argc, char **argv)
     FIND(add_x0_x0_0x40_ret);
     FIND(trustcache);
     FIND(move_snapshot_to_purgatory);
+    FIND(apfs_jhash_getvnode);
     FIND(zone_map_ref);
     FIND(OSBoolean_True);
     FIND(osunserializexml);
