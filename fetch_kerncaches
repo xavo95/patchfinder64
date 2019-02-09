@@ -57,7 +57,7 @@ for firmware in intended_firmwares:
 
             print("iOS {}_{}: {} DOWNLOADING".format(firmware, buildid, cache))
             if download_kernelcache(url, cache):
-                if os.system("bin/kerneldec -i {} -o {} -k kpps/{}_{}/{}.kpp".format(cache, target, firmware, buildid, cache)) == 0:
+                if os.system("kerneldec/kerneldec -i {} -o {} -k kpps/{}_{}/{}.kpp".format(cache, target, firmware, buildid, cache)) == 0:
                     print("iOS {}_{}: {} OK".format(firmware, buildid, cache))
                     os.remove(cache)
                 else:

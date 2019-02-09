@@ -20,10 +20,8 @@ else
 		gcc -g -DHAVE_MAIN -DNOT_DARWIN patchfinder64.c -o ./bin/patchfinder64
 endif
 
-kerneldec: bin/kerneldec
-
-bin/kerneldec: kerneldec.cpp | bin
-	g++ kerneldec.cpp -o bin/kerneldec
+kerneldec:
+	@make -C kerneldec
 
 clean:
-	rm -f bin/patchfinder64 bin/kerneldec
+	rm -f bin/patchfinder64
