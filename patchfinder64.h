@@ -56,5 +56,8 @@ uint64_t find_kauth_cred_ref(void);
 uint64_t find_apfs_jhash_getvnode(void);
 uint64_t find_fs_lookup_snapshot_metadata_by_name_and_return_name(void);
 uint64_t find_fs_lookup_snapshot_metadata_by_name(void);
+uint64_t find_mount_common(void);
+uint64_t find_fs_snapshot(void);
+uint64_t find_vnode_get_snapshot(void);
 
 #endif

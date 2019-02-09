@@ -2326,6 +2326,7 @@ addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
     func = follow_call64(kernel, call);
     if (!func) return 0;
 
+#ifdef HAVE_MAIN
     // Verify we got the right function
     uint64_t sub = find_fs_lookup_snapshot_metadata_by_name();
     if (!sub) return 0;
@@ -2334,10 +2335,62 @@ addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
     if (!call) return 0;
 
     if (follow_call64(kernel, call) != func) return 0;
+#endif
 
     return func + kerndumpbase;
 }
 
+addr_t find_mount_common() {
+    uint64_t ref = find_strref("\"mount_common():", true, false);
+    if (!ref) return 0;
+    ref -= kerndumpbase;
+    uint64_t func = bof64(kernel, xnucore_base, ref);
+    if (!func) return 0;
+    return func + kerndumpbase;
+}
+
+
+addr_t find_fs_snapshot() {
+    uint64_t mount_common = find_mount_common();
+    if (!mount_common) return 0;
+
+    uint64_t ref = find_reference(mount_common, 5, false);
+    if (!ref) return 0;
+    ref -= kerndumpbase;
+
+    uint64_t func = bof64(kernel, xnucore_base, ref);
+    if (!func) return 0;
+    return func + kerndumpbase;
+}
+
+addr_t find_vnode_get_snapshot() {
+    uint64_t fs_snapshot = find_fs_snapshot();
+    if (!fs_snapshot) return 0;
+
+    uint64_t call = fs_snapshot - kerndumpbase;
+    for (int i=0; i<3; i++) {
+        call = step64(kernel, call+4, 0x100, INSN_CALL);
+        if (!call) return 0;
+    }
+    uint64_t func = follow_call64(kernel, call);
+    if (!func) return 0;
+
+#ifdef HAVE_MAIN
+    // Verification
+
+    int i=0;
+    uint64_t ref;
+    while ((ref = find_reference(func + kerndumpbase, i+1, false))) {
+        if (bof64(kernel, xnucore_base, ref - kerndumpbase) != fs_snapshot - kerndumpbase) {
+            return 0;
+        }
+        i++;
+    }
+    if (i==0) return 0;
+#endif
+
+    return func + kerndumpbase;
+}
 /*
  *
  *
@@ -2459,6 +2512,9 @@ main(int argc, char **argv)
     FIND(smalloc);
     FIND(shenanigans);
     FIND(fs_lookup_snapshot_metadata_by_name_and_return_name);
+    FIND(mount_common);
+    FIND(fs_snapshot);
+    FIND(vnode_get_snapshot);
 
     term_kernel();
     return EXIT_SUCCESS;
