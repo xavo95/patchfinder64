@@ -2261,6 +2261,45 @@ addr_t find_kauth_cred_ref(void)
     
     return start + kerndumpbase;
 }
+
+addr_t find_apfs_jhash_getvnode(void)
+{
+    addr_t ref = find_strref("apfs_jhash_getvnode", true, true);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t start = bof64(kernel, prelink_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+    
+    return start + kerndumpbase;
+}
+
+addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
+    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, 1), func = 0, call = 0;
+    if (!ref) return 0;
+   
+    ref -= kerndumpbase;
+   
+    for (int i = 0; i < 7; i++) {
+        call = step64_back(kernel, ref, 256, INSN_CALL);
+        if (!call) return 0;
+       
+        func = follow_call64(kernel, call);
+        if (!func) return 0;
+       
+        ref = call - 4;
+    }
+   
+    return func + kerndumpbase;
+}
+
 /*
  *
  *
@@ -2375,6 +2414,7 @@ main(int argc, char **argv)
     FIND(add_x0_x0_0x40_ret);
     FIND(trustcache);
     FIND(move_snapshot_to_purgatory);
+    FIND(apfs_jhash_getvnode);
     FIND(zone_map_ref);
     FIND(OSBoolean_True);
     FIND(osunserializexml);
