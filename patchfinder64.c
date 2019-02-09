@@ -2245,6 +2245,25 @@ addr_t find_apfs_jhash_getvnode(void)
     return start + kerndumpbase;
 }
 
+addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
+    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, 1), func = 0, call = 0;
+    if (!ref) return 0;
+   
+    ref -= kerndumpbase;
+   
+    for (int i = 0; i < 7; i++) {
+        call = step64_back(kernel, ref, 256, INSN_CALL);
+        if (!call) return 0;
+       
+        func = follow_call64(kernel, call);
+        if (!func) return 0;
+       
+        ref = call - 4;
+    }
+   
+    return func + kerndumpbase;
+}
+
 /*
  *
  *
