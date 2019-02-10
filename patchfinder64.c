@@ -354,7 +354,7 @@ xref64(const uint8_t *buf, addr_t start, addr_t end, addr_t what)
             if (op & 0x2000000) {
                 imm |= 0xf << 28;
             }
-            unsigned adr = i + imm;
+            unsigned adr = (unsigned)(i + imm);
             if (adr == what) {
                 return i;
             }
