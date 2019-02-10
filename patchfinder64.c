@@ -485,7 +485,9 @@ follow_cbz(const uint8_t *buf, addr_t cbz)
 #ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
 #include <mach/mach.h>
 size_t kread(uint64_t where, void *p, size_t size);
-#elif defined(VFS_H_included)
+#endif
+
+#ifdef VFS_H_included
 #define INVALID_HANDLE NULL
 static FHANDLE
 OPEN(const char *filename, int oflag)
@@ -562,7 +564,7 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
 
     if (filename == NULL) {
 #ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
-        rv = kread(base, buf, sizeof(buf));
+        rv = kread(kernel_base, buf, sizeof(buf));
         if (rv != sizeof(buf) || !MACHO(buf)) {
             return -1;
         }
@@ -664,7 +666,7 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
             return -1;
         }
 
-        kernel_mh = kernel + base - min;
+        kernel_mh = kernel + kernel_base - min;
 #endif
     } else {
         kernel = calloc(1, kernel_size);
