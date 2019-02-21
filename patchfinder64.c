@@ -815,7 +815,7 @@ addr_t
 find_gPhysBase(void)
 {
     addr_t ret, val;
-    addr_t ref = find_strref("\"pmap_map_high_window_bd: insufficient pages", true, false);
+    addr_t ref = find_strref("\"pmap_map_high_window_bd: insufficient pages", 1, string_base_cstring);
     if (!ref) {
         return 0;
     }
@@ -843,7 +843,7 @@ addr_t
 find_kernel_pmap(void)
 {
     addr_t call, bof, val;
-    addr_t ref = find_strref("\"pmap_map_bd\"", true, false);
+    addr_t ref = find_strref("\"pmap_map_bd\"", 1, string_base_cstring);
     if (!ref) {
         return 0;
     }
@@ -867,7 +867,7 @@ addr_t
 find_amfiret(void)
 {
     addr_t ret;
-    addr_t ref = find_strref("AMFI: hook..execve() killing pid %u: %s\n", true, true);
+    addr_t ref = find_strref("AMFI: hook..execve() killing pid %u: %s\n", 1, string_base_pstring);
     if (!ref) {
         return 0;
     }
@@ -903,7 +903,7 @@ addr_t
 find_amfi_memcmpstub(void)
 {
     addr_t call, dest, reg;
-    addr_t ref = find_strref("%s: Possible race detected. Rejecting.", true, true);
+    addr_t ref = find_strref("%s: Possible race detected. Rejecting.", 1, string_base_pstring);
     if (!ref) {
         return 0;
     }
@@ -944,7 +944,7 @@ addr_t
 find_lwvm_mapio_patch(void)
 {
     addr_t call, dest, reg;
-    addr_t ref = find_strref("_mapForIO", true, true);
+    addr_t ref = find_strref("_mapForIO", 1, string_base_pstring);
     if (!ref) {
         return 0;
     }
@@ -972,7 +972,7 @@ addr_t
 find_lwvm_mapio_newj(void)
 {
     addr_t call;
-    addr_t ref = find_strref("_mapForIO", true, true);
+    addr_t ref = find_strref("_mapForIO", 1, string_base_pstring);
     if (!ref) {
         return 0;
     }
@@ -1072,7 +1072,7 @@ addr_t
 find_trustcache(void)
 {
     addr_t cbz, call, func, val;
-    addr_t ref = find_strref("\"region to unlock not page aligned", true, false);
+    addr_t ref = find_strref("\"region to unlock not page aligned", 1, string_base_cstring);
     if (ref) {
         // iOS 12
         ref -= kerndumpbase;
@@ -1095,10 +1095,10 @@ find_trustcache(void)
 
         return val + 8 + kerndumpbase;
     }
-    ref = find_strref("amfi_prevent_old_entitled_platform_binaries", true, true);
+    ref = find_strref("amfi_prevent_old_entitled_platform_binaries", 1, string_base_pstring);
     if (!ref) {
         // iOS 11
-        ref = find_strref("com.apple.MobileFileIntegrity", false, true);
+        ref = find_strref("com.apple.MobileFileIntegrity", 1, string_base_pstring);
         if (!ref) {
             return 0;
         }
@@ -1129,7 +1129,7 @@ okay:
     }
     val = calc64(kernel, func, func + 16, 8);
     if (!val) {
-        ref = find_strref("%s: only allowed process can check the trust cache", true, true); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
+        ref = find_strref("%s: only allowed process can check the trust cache", 1, string_base_pstring); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
         if (!ref) {
             return 0;
         }
@@ -1179,10 +1179,10 @@ addr_t
 find_amficache(void)
 {
     addr_t cbz, call, func, val;
-    addr_t ref = find_strref("amfi_prevent_old_entitled_platform_binaries", true, true);
+    addr_t ref = find_strref("amfi_prevent_old_entitled_platform_binaries", 1, string_base_pstring);
     if (!ref) {
         // iOS 11
-        ref = find_strref("com.apple.MobileFileIntegrity", false, true);
+        ref = find_strref("com.apple.MobileFileIntegrity", 1, string_base_pstring);
         if (!ref) {
             return 0;
         }
@@ -1210,7 +1210,7 @@ okay:
     }
     val = calc64(kernel, func, func + 16, 8);
     if (!val) {
-        ref = find_strref("%s: only allowed process can check the trust cache", true, true); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
+        ref = find_strref("%s: only allowed process can check the trust cache", 1, string_base_pstring); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
         if (!ref) {
             return 0;
         }
@@ -1262,7 +1262,7 @@ addr_t
 find_AGXCommandQueue_vtable(void)
 {
     addr_t val, str8;
-    addr_t ref = find_strref("AGXCommandQueue", true, true);
+    addr_t ref = find_strref("AGXCommandQueue", 1, string_base_pstring);
     if (!ref) {
         return 0;
     }
@@ -1290,7 +1290,7 @@ addr_t
 find_allproc(void)
 {
     addr_t val, bof, str8;
-    addr_t ref = find_strref("\"pgrp_add : pgrp is dead adding process\"", true, false);
+    addr_t ref = find_strref("\"pgrp_add : pgrp is dead adding process\"", 1, string_base_cstring);
     if (!ref) {
         return 0;
     }
@@ -1356,7 +1356,7 @@ find_realhost(addr_t priv)
  */ 
 
 addr_t find_vfs_context_current(void) {
-    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", true, false);
+    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, string_base_cstring);
     
     if (!error_str) {
         return 0;
@@ -1380,7 +1380,7 @@ addr_t find_vfs_context_current(void) {
 }
 
 addr_t find_vnode_lookup(void) {
-    addr_t hfs_str = find_strref("hfs: journal open cb: error %d looking up device %s (dev uuid %s)\n", true, true);
+    addr_t hfs_str = find_strref("hfs: journal open cb: error %d looking up device %s (dev uuid %s)\n", 1, string_base_pstring);
     
     if (!hfs_str) {
         return 0;
@@ -1416,9 +1416,9 @@ addr_t find_vnode_lookup(void) {
 }
 
 addr_t find_vnode_put(void) {
-    addr_t err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", true, true);
+    addr_t err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", 1, string_base_pstring);
     if (!err_str)
-	    err_str = find_strref("getparent(%p) != parent_vp(%p)", true, true);
+	    err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, string_base_pstring);
     
     if (!err_str) {
         return 0;
@@ -1469,7 +1469,7 @@ addr_t find_vnode_getfromfd(void) {
     addr_t call1, call2, call3, call4, call5, call6, call7;
     addr_t func1;
 
-    addr_t ent_str = find_strref("rootless_storage_class_entitlement", true, true);
+    addr_t ent_str = find_strref("rootless_storage_class_entitlement", 1, string_base_pstring);
     
     if (!ent_str) {
         return 0;
@@ -1541,7 +1541,7 @@ addr_t find_vnode_getfromfd(void) {
 }
 
 addr_t find_vnode_getattr(void) {
-    addr_t error_str = find_strref("\"add_fsevent: you can't pass me a NULL vnode ptr (type %d)!\\n\"", true, false);
+    addr_t error_str = find_strref("\"add_fsevent: you can't pass me a NULL vnode ptr (type %d)!\\n\"", 1, string_base_cstring);
     
     if (!error_str) {
         return 0;
@@ -1566,7 +1566,7 @@ addr_t find_vnode_getattr(void) {
 }
 
 addr_t find_SHA1Init(void) {
-    addr_t id_str = find_strref("CrashReporter-ID", true, true);
+    addr_t id_str = find_strref("CrashReporter-ID", 1, string_base_pstring);
     
     if (!id_str) {
         return 0;
@@ -1614,7 +1614,7 @@ addr_t find_SHA1Init(void) {
 }
 
 addr_t find_SHA1Update(void) {
-    addr_t id_str = find_strref("CrashReporter-ID", true, true);
+    addr_t id_str = find_strref("CrashReporter-ID", 1, string_base_pstring);
     if (!id_str) {
         return 0;
     }
@@ -1668,7 +1668,7 @@ addr_t find_SHA1Update(void) {
 
 
 addr_t find_SHA1Final(void) {
-    addr_t id_str = find_strref("CrashReporter-ID", true, true);
+    addr_t id_str = find_strref("CrashReporter-ID", 1, string_base_pstring);
     
     if (!id_str) {
         return 0;
@@ -1728,7 +1728,7 @@ addr_t find_SHA1Final(void) {
 }
 
 addr_t find_csblob_entitlements_dictionary_set(void) {
-    addr_t ent_str = find_strref("entitlements are not a dictionary", true, true);
+    addr_t ent_str = find_strref("entitlements are not a dictionary", 1, string_base_pstring);
     
     if (!ent_str) {
         return 0;
@@ -1776,7 +1776,7 @@ addr_t find_csblob_entitlements_dictionary_set(void) {
 }
 
 addr_t find_kernel_task(void) {
-    addr_t term_str = find_strref("\"thread_terminate\"", true, false);
+    addr_t term_str = find_strref("\"thread_terminate\"", 1, string_base_cstring);
     
     if (!term_str) {
         return 0;
@@ -1807,7 +1807,7 @@ addr_t find_kernel_task(void) {
 
 
 addr_t find_kernproc(void) {
-    addr_t ret_str = find_strref("\"returning child proc which is not cur_act\"", true, false);
+    addr_t ret_str = find_strref("\"returning child proc which is not cur_act\"", 1, string_base_cstring);
     
     if (!ret_str) {
         return 0;
@@ -1831,7 +1831,7 @@ addr_t find_kernproc(void) {
 }
 
 addr_t find_vnode_recycle(void) {
-    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", true, false);
+    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, string_base_cstring);
     
     if (!error_str) {
         return 0;
@@ -1873,7 +1873,7 @@ addr_t find_vnode_recycle(void) {
 }
 
 addr_t find_lck_mtx_lock(void) {
-    addr_t details_str = find_strref("Details", true, false);
+    addr_t details_str = find_strref("Details", 1, string_base_cstring);
     
     if (!details_str) {
         return 0;
@@ -1897,7 +1897,7 @@ addr_t find_lck_mtx_lock(void) {
 }
 
 addr_t find_lck_mtx_unlock(void) {
-    addr_t details_str = find_strref("Details", true, false);
+    addr_t details_str = find_strref("Details", 1, string_base_cstring);
     
     if (!details_str) {
         return 0;
@@ -1945,7 +1945,7 @@ addr_t find_lck_mtx_unlock(void) {
 }
 
 addr_t find_strlen(void) {
-    addr_t xnu_str = find_strref("AP-xnu", true, false);
+    addr_t xnu_str = find_strref("AP-xnu", 1, string_base_cstring);
     
     if (!xnu_str) {
         return 0;
@@ -2058,7 +2058,7 @@ addr_t find_zone_map_ref(void)
     // \"Nothing being freed to the zone_map. start = end = %p\\n\"
     uint64_t val = kerndumpbase;
     
-    addr_t ref = find_strref("\"Nothing being freed to the zone_map. start = end = %p\\n\"", true, false);
+    addr_t ref = find_strref("\"Nothing being freed to the zone_map. start = end = %p\\n\"", 1, string_base_cstring);
     
     if (!ref) {
         return 0;
@@ -2131,7 +2131,7 @@ addr_t find_OSBoolean_True(void)
 
 addr_t find_osunserializexml(void)
 {
-    addr_t ref = find_strref("OSUnserializeXML: %s near line %d\n", true, false);
+    addr_t ref = find_strref("OSUnserializeXML: %s near line %d\n", 1, string_base_cstring);
     
     if (!ref) {
         return 0;
@@ -2150,7 +2150,7 @@ addr_t find_osunserializexml(void)
 
 addr_t find_smalloc(void)
 {
-    addr_t ref = find_strref("sandbox memory allocation failure", true, true);
+    addr_t ref = find_strref("sandbox memory allocation failure", 1, string_base_pstring);
     
     if (!ref) {
         return 0;
@@ -2169,7 +2169,7 @@ addr_t find_smalloc(void)
 
 addr_t find_shenanigans(void)
 {
-    addr_t ref = find_strref("\"shenanigans!", true, true);
+    addr_t ref = find_strref("\"shenanigans!", 1, string_base_pstring);
     
     if (!ref) {
         return 0;
@@ -2241,7 +2241,7 @@ addr_t find_shenanigans(void)
 
 addr_t find_move_snapshot_to_purgatory(void)
 {
-    addr_t ref = find_strref("move_snapshot_to_purgatory", true, true);
+    addr_t ref = find_strref("move_snapshot_to_purgatory", 1, string_base_pstring);
     
     if (!ref) {
         return 0;
@@ -2260,7 +2260,7 @@ addr_t find_move_snapshot_to_purgatory(void)
 
 addr_t find_chgproccnt(void)
 {
-    addr_t ref = find_strref("\"chgproccnt: lost user\"", true, false);
+    addr_t ref = find_strref("\"chgproccnt: lost user\"", 1, string_base_cstring);
     
     if (!ref) {
         return 0;
@@ -2279,7 +2279,7 @@ addr_t find_chgproccnt(void)
 
 addr_t find_kauth_cred_ref(void)
 {
-    addr_t ref = find_strref("\"kauth_cred_ref: trying to take a reference on a cred with no references\"", true, false);
+    addr_t ref = find_strref("\"kauth_cred_ref: trying to take a reference on a cred with no references\"", 1, string_base_cstring);
     
     if (!ref) {
         return 0;
@@ -2298,7 +2298,7 @@ addr_t find_kauth_cred_ref(void)
 
 addr_t find_apfs_jhash_getvnode(void)
 {
-    addr_t ref = find_strref("apfs_jhash_getvnode", true, true);
+    addr_t ref = find_strref("apfs_jhash_getvnode", 1, string_base_pstring);
     
     if (!ref) {
         return 0;
@@ -2316,7 +2316,7 @@ addr_t find_apfs_jhash_getvnode(void)
 }
 
 addr_t find_fs_lookup_snapshot_metadata_by_name() {
-    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, 1), func = 0, call = 0;
+    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, string_base_pstring), func = 0, call = 0;
     if (!ref) return 0;
 
     ref -= kerndumpbase;
@@ -2335,7 +2335,7 @@ addr_t find_fs_lookup_snapshot_metadata_by_name() {
 }
 
 addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
-    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, 1), func = 0, call = 0;
+    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, string_base_pstring), func = 0, call = 0;
     if (!ref) return 0;
    
     ref -= kerndumpbase;
@@ -2365,7 +2365,7 @@ addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
 }
 
 addr_t find_mount_common() {
-    uint64_t ref = find_strref("\"mount_common():", true, false);
+    uint64_t ref = find_strref("\"mount_common():", 1, string_base_cstring);
     if (!ref) return 0;
     ref -= kerndumpbase;
     uint64_t func = bof64(kernel, xnucore_base, ref);
