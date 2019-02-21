@@ -805,7 +805,13 @@ find_strref(const char *string, int n, enum string_bases string_base)
             size = cstring_size;
             break;
     }
-    str = boyermoore_horspool_memmem(kernel + base, size, (uint8_t *)string, strlen(string));
+    addr_t off = 0;
+    while ((str = boyermoore_horspool_memmem(kernel + base + off, size - off, (uint8_t *)string, strlen(string)))) {
+        // Only match the beginning of strings
+        if (str == kernel + base || *(str-1) == '\0')
+            break;
+        off = str - (kernel + base) + 1;
+    }
     if (!str) {
         return 0;
     }
