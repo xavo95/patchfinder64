@@ -330,7 +330,7 @@ xref64(const uint8_t *buf, addr_t start, addr_t end, addr_t what)
     for (i = start & ~3; i < end; i += 4) {
         uint32_t op = *(uint32_t *)(buf + i);
         unsigned reg = op & 0x1F;
-        
+
         if ((op & 0x9F000000) == 0x90000000) {
             signed adr = ((op & 0x60000000) >> 18) | ((op & 0xFFFFE0) << 8);
             //printf("%llx: ADRP X%d, 0x%llx\n", i, reg, ((long long)adr << 1) + (i & ~0xFFF));
@@ -384,7 +384,8 @@ xref64(const uint8_t *buf, addr_t start, addr_t end, addr_t what)
                 return i;
             }
         }
-        if (value[reg] == what) {
+        // Don't match SP as an offset
+        if (value[reg] == what && reg != 0x1f) {
             return i;
         }
     }
