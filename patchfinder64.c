@@ -1835,73 +1835,46 @@ addr_t find_vnode_recycle(void) {
 }
 
 addr_t find_lck_mtx_lock(void) {
-    addr_t details_str = find_strref("Details", 1, string_base_cstring);
+    addr_t strref = find_strref("nxprov_detacher", 1, string_base_cstring);
+    if (!strref) return 0;
     
-    if (!details_str) {
-        return 0;
-    }
-    
-    details_str -= kerndumpbase;
+    strref -= kerndumpbase;
 
-    addr_t call_to_target = step64(kernel, details_str + 4, 40*4, INSN_CALL);
-    
-    if (!call_to_target) {
-        return 0;
-    }
-    
+    addr_t call_to_target = step64_back(kernel, strref - 4, 0x10, INSN_CALL);
+    if (!call_to_target) return 0;
+
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
-    
-    if (!offset_to_target) {
-        return 0;
+    if (!offset_to_target) return 0;
+
+    // Did we really find lck_mtx_lock_contended?
+    call_to_target = step64_back(kernel, offset_to_target, 0x4, INSN_B);
+    if (call_to_target) {
+        addr_t target = follow_call64(kernel, call_to_target);
+        if (target == offset_to_target) {
+            // Nope
+            offset_to_target = bof64(kernel, xnucore_base, call_to_target);
+            if (!offset_to_target) return 0;
+        }
     }
+
 
     return offset_to_target + kerndumpbase;
 }
 
 addr_t find_lck_mtx_unlock(void) {
-    addr_t details_str = find_strref("Details", 1, string_base_cstring);
+    addr_t strref = find_strref("nxprov_detacher", 1, string_base_cstring);
+    if (!strref) return 0;
     
-    if (!details_str) {
-        return 0;
-    }
-    
-    details_str -= kerndumpbase;
+    strref -= kerndumpbase;
 
-    addr_t call_to_lck_mtx_lock = step64(kernel, details_str + 4, 40*4, INSN_CALL);
-    
-    if (!call_to_lck_mtx_lock) {
-        return 0;
-    }
-    
-    addr_t call_to_sysctl_register_oid = step64(kernel, call_to_lck_mtx_lock+4, 40*4, INSN_CALL);
-    
-    if (!call_to_sysctl_register_oid) {
-        return 0;
-    }
-    
-    addr_t call_to_strlcat1 = step64(kernel, call_to_sysctl_register_oid + 4, 40*4, INSN_CALL);
-    
-    if (!call_to_strlcat1) {
-        return 0;
-    }
-    
-    addr_t call_to_strlcat2 = step64(kernel, call_to_strlcat1+4, 40*4, INSN_CALL);
+    addr_t call = step64(kernel, strref + 4, 0x100, INSN_CALL);
+    if (!call) return 0;
 
-    if (!call_to_strlcat2) {
-        return 0;
-    }
-    
-    addr_t call_to_target = step64(kernel, call_to_strlcat2 + 4, 40*4, INSN_CALL);
-    
-    if (!call_to_target) {
-        return 0;
-    }
-    
+    addr_t call_to_target = step64(kernel, call + 4, 0x10, INSN_CALL);
+    if (!call_to_target) return 0;
+
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
-    
-    if (!offset_to_target) {
-        return 0;
-    }
+    if (!offset_to_target) return 0;
 
     return offset_to_target + kerndumpbase;
 }
@@ -2065,7 +2038,9 @@ addr_t find_zone_map_ref(void)
 addr_t find_OSBoolean_True(void)
 {
     addr_t val;
-    addr_t ref = find_strref("Delay Autounload", false, false);
+    addr_t ref = find_strref("Delay Autounload", 2, string_base_cstring);
+    if (!ref) ref = find_strref("Delay Autounload", 1, string_base_cstring);
+
     if (!ref) {
         return 0;
     }
@@ -2113,6 +2088,7 @@ addr_t find_osunserializexml(void)
 addr_t find_smalloc(void)
 {
     addr_t ref = find_strref("sandbox memory allocation failure", 1, string_base_pstring);
+    if (!ref) ref = find_strref("sandbox memory allocation failure", 1, string_base_oslstring);
     
     if (!ref) {
         return 0;
@@ -2352,12 +2328,13 @@ addr_t find_fs_snapshot() {
 addr_t find_vnode_get_snapshot() {
     uint64_t fs_snapshot = find_fs_snapshot();
     if (!fs_snapshot) return 0;
+    fs_snapshot -= kerndumpbase;
 
-    uint64_t call = fs_snapshot - kerndumpbase;
-    for (int i=0; i<3; i++) {
-        call = step64(kernel, call+4, 0x100, INSN_CALL);
-        if (!call) return 0;
+    uint64_t call = step64(kernel, fs_snapshot+4, 0x400, 0xAA0003E6, 0xFFE0FFFF);
+    if (!call) {
+        return 0;
     }
+    call += 4;
     uint64_t func = follow_call64(kernel, call);
     if (!func) return 0;
 
@@ -2367,7 +2344,7 @@ addr_t find_vnode_get_snapshot() {
     int i=0;
     uint64_t ref;
     while ((ref = find_reference(func + kerndumpbase, i+1, false))) {
-        if (bof64(kernel, xnucore_base, ref - kerndumpbase) != fs_snapshot - kerndumpbase) {
+        if (bof64(kernel, xnucore_base, ref - kerndumpbase) != fs_snapshot) {
             return 0;
         }
         i++;
