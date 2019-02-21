@@ -2450,7 +2450,7 @@ main(int argc, char **argv)
 #define CHECK(name, symbol_name) do { \
     addr_t patchfinder_offset = find_ ##name (); \
     addr_t actual_offset = find_symbol(symbol_name); \
-    printf("%s: PF=0x%llx - AS=0x%llx - %s\n", symbol_name, patchfinder_offset, actual_offset, (patchfinder_offset == actual_offset ? "PASS" : "FAIL")); \
+    printf("%s: PF=0x%llx - AS=0x%llx - %s\n", symbol_name, patchfinder_offset, actual_offset, ((actual_offset==0?patchfinder_offset!=0:patchfinder_offset == actual_offset) ? "PASS" : "FAIL")); \
 } while(false)
 #define FIND(name) do { \
     addr_t patchfinder_offset = find_ ##name (); \
