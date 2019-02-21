@@ -491,6 +491,21 @@ follow_call64(const uint8_t *buf, addr_t call)
 }
 
 static addr_t
+follow_stub(const uint8_t *buf, addr_t call)
+{
+    addr_t stub = follow_call64(buf, call);
+    if (!stub) return 0;
+
+    if (monolithic_kernel) {
+        return stub + kerndumpbase;
+    }
+    addr_t target_function_offset = calc64(buf, stub, stub+4*3, 16);
+    if (!target_function_offset) return 0;
+
+    return *(addr_t*)(buf + target_function_offset);
+}
+
+static addr_t
 follow_cbz(const uint8_t *buf, addr_t cbz)
 {
     return cbz + ((*(int *)(buf + cbz) & 0x3FFFFE0) << 10 >> 13);
@@ -1326,112 +1341,52 @@ find_realhost(addr_t priv)
 
 addr_t find_vfs_context_current(void) {
     addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, string_base_cstring);
-    
-    if (!error_str) {
-        return 0;
-    }
+    if (!error_str) return 0;
     
     error_str -= kerndumpbase;
 
     addr_t call_to_target = step64_back(kernel, error_str, 10*4, INSN_CALL);
-    
-    if (!call_to_target) {
-        return 0;
-    }
+    if (!call_to_target) return 0;
     
     addr_t offset_to_target = follow_call64(kernel, call_to_target);
-    
-    if (!offset_to_target) {
-        return 0;
-    }
+    if (!offset_to_target) return 0;
 
     return offset_to_target + kerndumpbase;
 }
 
 addr_t find_vnode_lookup(void) {
     addr_t hfs_str = find_strref("hfs: journal open cb: error %d looking up device %s (dev uuid %s)\n", 1, string_base_pstring);
-    
-    if (!hfs_str) {
-        return 0;
-    }
+    if (!hfs_str) return 0;
     
     hfs_str -= kerndumpbase;
 
     addr_t call_to_stub = step64_back(kernel, hfs_str, 10*4, INSN_CALL);
+    if (!call_to_stub) return 0;
     
-    if (!call_to_stub) {
-        return 0;
-    }
-    
-    addr_t stub_function = follow_call64(kernel, call_to_stub);
-    
-    if (!stub_function) {
-        return 0;
-    }
-    
-    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
-    
-    if (!target_function_offset) {
-        return 0;
-    }
-    
-    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
-    
-    if (!target_function) {
-        return 0;
-    }
-
-    return target_function;
+    return follow_stub(kernel, call_to_stub);
 }
 
 addr_t find_vnode_put(void) {
-    addr_t err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", 1, string_base_pstring);
+    addr_t err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, string_base_oslstring);
     if (!err_str)
-	    err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, string_base_pstring);
+        err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", 1, string_base_pstring);
+    if (!err_str)
+        err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, string_base_pstring);
     
-    if (!err_str) {
-        return 0;
-    }
+    if (!err_str) return 0;
 
     err_str -= kerndumpbase;
 
     addr_t call_to_os_log = step64(kernel, err_str, 20*4, INSN_CALL);
-    
-    if (!call_to_os_log) {
-        return 0;
-    }
+    if (!call_to_os_log) return 0;
     
     addr_t call_to_vn_getpath = step64(kernel, call_to_os_log + 4, 20*4, INSN_CALL);
-    
-    if (!call_to_vn_getpath) {
-        return 0;
-    }
+    if (!call_to_vn_getpath) return 0;
     
     addr_t call_to_stub = step64(kernel, call_to_vn_getpath + 4, 20*4, INSN_CALL);
-    
-    if (!call_to_stub) {
-        return 0;
-    }
+    if (!call_to_stub) return 0;
 
-    addr_t stub_function = follow_call64(kernel, call_to_stub);
-    
-    if (!stub_function) {
-        return 0;
-    }
-    
-    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
-    
-    if (!target_function_offset) {
-        return 0;
-    }
-    
-    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
-    
-    if (!target_function) {
-        return 0;
-    }
-
-    return target_function;
+    return follow_stub(kernel, call_to_stub);
 }
 
 addr_t find_vnode_getfromfd(void) {
@@ -1483,30 +1438,9 @@ addr_t find_vnode_getfromfd(void) {
     }
     
     addr_t call_to_stub = step64(kernel, call_to_vfs_context_create + 4, 20*4, INSN_CALL);
-    
-    if (!call_to_stub) {
-        return 0;
-    }
+    if (!call_to_stub) return 0;
 
-    addr_t stub_function = follow_call64(kernel, call_to_stub);
-    
-    if (!stub_function) {
-        return 0;
-    }
-    
-    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
-    
-    if (!target_function_offset) {
-        return 0;
-    }
-    
-    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
-    
-    if (!target_function) {
-        return 0;
-    }
-
-    return target_function;
+    return follow_stub(kernel, call_to_stub);
 }
 
 addr_t find_vnode_getattr(void) {
@@ -1556,30 +1490,9 @@ addr_t find_SHA1Init(void) {
     }
     
     addr_t call_to_stub = step64(kernel, hash_function, 20*4, INSN_CALL);
-    
-    if (!call_to_stub) {
-        return 0;
-    }
+    if (!call_to_stub) return 0;
 
-    addr_t stub_function = follow_call64(kernel, call_to_stub);
-    
-    if (!stub_function) {
-        return 0;
-    }
-    
-    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
-    
-    if (!target_function_offset) {
-        return 0;
-    }
-    
-    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
-    
-    if (!target_function) {
-        return 0;
-    }
-
-    return target_function;
+    return follow_stub(kernel, call_to_stub);
 }
 
 addr_t find_SHA1Update(void) {
@@ -1609,30 +1522,9 @@ addr_t find_SHA1Update(void) {
     }
     
     addr_t call_to_stub = step64(kernel, call_to_sha1init + 4, 20*4, INSN_CALL);
-    
-    if (!call_to_stub) {
-        return 0;
-    }
+    if (!call_to_stub) return 0;
 
-    addr_t stub_function = follow_call64(kernel, call_to_stub);
-    
-    if (!stub_function) {
-        return 0;
-    }
-    
-    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
-    
-    if (!target_function_offset) {
-        return 0;
-    }
-    
-    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
-    
-    if (!target_function) {
-        return 0;
-    }
-
-    return target_function;
+    return follow_stub(kernel, call_to_stub);
 }
 
 
@@ -1670,30 +1562,9 @@ addr_t find_SHA1Final(void) {
     }
     
     addr_t call_to_stub = step64(kernel, call_to_sha1update + 4, 20*4, INSN_CALL);
-    
-    if (!call_to_stub) {
-        return 0;
-    }
+    if (!call_to_stub) return 0;
 
-    addr_t stub_function = follow_call64(kernel, call_to_stub);
-    
-    if (!stub_function) {
-        return 0;
-    }
-    
-    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
-    
-    if (!target_function_offset) {
-        return 0;
-    }
-    
-    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
-    
-    if (!target_function) {
-        return 0;
-    }
-
-    return target_function;
+    return follow_stub(kernel, call_to_stub);
 }
 
 addr_t find_csblob_entitlements_dictionary_set(void) {
@@ -1718,30 +1589,9 @@ addr_t find_csblob_entitlements_dictionary_set(void) {
     }
     
     addr_t call_to_stub = step64(kernel, call_to_csblob_entitlements_dictionary_copy + 4, 20*4, INSN_CALL);
-    
-    if (!call_to_stub) {
-        return 0;
-    }
+    if (!call_to_stub) return 0;
 
-    addr_t stub_function = follow_call64(kernel, call_to_stub);
-    
-    if (!stub_function) {
-        return 0;
-    }
-    
-    addr_t target_function_offset = calc64(kernel, stub_function, stub_function+12, 16);
-    
-    if (!target_function_offset) {
-        return 0;
-    }
-    
-    addr_t target_function = *(addr_t*)(kernel+target_function_offset);
-    
-    if (!target_function) {
-        return 0;
-    }
-
-    return target_function;
+    return follow_stub(kernel, call_to_stub);
 }
 
 addr_t find_kernel_task(void) {
