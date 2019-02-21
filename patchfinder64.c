@@ -2447,31 +2447,35 @@ main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-#define CHECK(name, symbol_name) do { \
-    addr_t patchfinder_offset = find_ ##name (); \
-    addr_t actual_offset = find_symbol(symbol_name); \
-    printf("%s: PF=0x%llx - AS=0x%llx - %s\n", symbol_name, patchfinder_offset, actual_offset, ((actual_offset==0?patchfinder_offset!=0:patchfinder_offset == actual_offset) ? "PASS" : "FAIL")); \
-} while(false)
 #define FIND(name) do { \
     addr_t patchfinder_offset = find_ ##name (); \
     printf("%s: PF=0x%llx - %s\n", #name, patchfinder_offset, (patchfinder_offset != 0 && patchfinder_offset != kerndumpbase)? "PASS" : "FAIL"); \
 } while(false)
+#define CHECK(name) do { \
+    addr_t actual_offset = find_symbol("_" #name); \
+    if (actual_offset == 0) { \
+        FIND(name); \
+    } else { \
+        addr_t patchfinder_offset = find_ ##name (); \
+        printf("%s: PF=0x%llx - AS=0x%llx - %s\n", #name, patchfinder_offset, actual_offset, ((actual_offset==0?patchfinder_offset!=0:patchfinder_offset == actual_offset) ? "PASS" : "FAIL")); \
+    } \
+} while(false)
     
-    CHECK(vfs_context_current, "_vfs_context_current");
-    CHECK(vnode_lookup, "_vnode_lookup");
-    CHECK(vnode_put, "_vnode_put");
-    CHECK(vnode_getfromfd, "_vnode_getfromfd");
-    CHECK(vnode_getattr, "_vnode_getattr");
-    CHECK(SHA1Init, "_SHA1Init");
-    CHECK(SHA1Update, "_SHA1Update");
-    CHECK(SHA1Final, "_SHA1Final");
-    CHECK(csblob_entitlements_dictionary_set, "_csblob_entitlements_dictionary_set");
-    CHECK(kernel_task, "_kernel_task");
-    CHECK(kernproc, "_kernproc");
-    CHECK(vnode_recycle, "_vnode_recycle");
-    CHECK(lck_mtx_lock, "_lck_mtx_lock");
-    CHECK(lck_mtx_unlock, "_lck_mtx_unlock");
-    CHECK(strlen, "_strlen");
+    CHECK(vfs_context_current);
+    CHECK(vnode_lookup);
+    CHECK(vnode_put);
+    CHECK(vnode_getfromfd);
+    CHECK(vnode_getattr);
+    CHECK(SHA1Init);
+    CHECK(SHA1Update);
+    CHECK(SHA1Final);
+    CHECK(csblob_entitlements_dictionary_set);
+    CHECK(kernel_task);
+    CHECK(kernproc);
+    CHECK(vnode_recycle);
+    CHECK(lck_mtx_lock);
+    CHECK(lck_mtx_unlock);
+    CHECK(strlen);
     FIND(add_x0_x0_0x40_ret);
     FIND(trustcache);
     FIND(move_snapshot_to_purgatory);
