@@ -13,8 +13,24 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+static bool auth_ptrs = false;
 typedef unsigned long long addr_t;
 static addr_t kerndumpbase = -1;
+static addr_t xnucore_base = 0;
+static addr_t xnucore_size = 0;
+static addr_t prelink_base = 0;
+static addr_t prelink_size = 0;
+static addr_t cstring_base = 0;
+static addr_t cstring_size = 0;
+static addr_t pstring_base = 0;
+static addr_t pstring_size = 0;
+static addr_t oslstring_base = 0;
+static addr_t oslstring_size = 0;
+static addr_t kernel_entry = 0;
+static void *kernel_mh = 0;
+static addr_t kernel_delta = 0;
+bool monolithic_kernel = false;
+
 
 #define IS64(image) (*(uint8_t *)(image) & 1)
 
@@ -245,6 +261,15 @@ step_adrp_to_reg(const uint8_t *buf, addr_t start, size_t length, int reg)
 static addr_t
 bof64(const uint8_t *buf, addr_t start, addr_t where)
 {
+    if (auth_ptrs) {
+        for (; where >= start; where -= 4) {
+            uint32_t op = *(uint32_t *)(buf + where);
+            if (op == 0xD503237F) {
+                return where;
+            }
+        }
+        return 0;
+    }
     for (; where >= start; where -= 4) {
         uint32_t op = *(uint32_t *)(buf + where);
         if ((op & 0xFFC003FF) == 0x910003FD) {
@@ -525,20 +550,6 @@ enum string_bases {
 static uint8_t *kernel = NULL;
 static size_t kernel_size = 0;
 
-static addr_t xnucore_base = 0;
-static addr_t xnucore_size = 0;
-static addr_t prelink_base = 0;
-static addr_t prelink_size = 0;
-static addr_t cstring_base = 0;
-static addr_t cstring_size = 0;
-static addr_t pstring_base = 0;
-static addr_t pstring_size = 0;
-static addr_t oslstring_base = 0;
-static addr_t oslstring_size = 0;
-static addr_t kernel_entry = 0;
-static void *kernel_mh = 0;
-static addr_t kernel_delta = 0;
-
 int
 init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const char *filename)
 {
@@ -613,8 +624,8 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                         cstring_base = sec[j].addr;
                         cstring_size = sec[j].size;
                     } else if (!strcmp(sec[j].sectname, "__os_log")) {
-                        oslstring_base = sec[j].addr - kerndumpbase;
-                        oslstring_size = sec[j].size - kerndumpbase;
+                        oslstring_base = sec[j].addr;
+                        oslstring_size = sec[j].size;
                     }
                 }
             }
@@ -644,6 +655,14 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
             }
         }
         q = q + cmd->cmdsize;
+    }
+
+    if (prelink_size == 0) {
+        monolithic_kernel = true;
+        prelink_base = xnucore_base;
+        prelink_size = xnucore_size;
+        pstring_base = cstring_base;
+        pstring_size = cstring_size;
     }
 
     kerndumpbase = min;
@@ -688,6 +707,9 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                 }
                 if (!kernel_mh) {
                     kernel_mh = kernel + seg->vmaddr - min;
+                }
+                if (!strcmp(seg->segname, "__PPLDATA")) {
+                    auth_ptrs = true;
                 }
                 if (!strcmp(seg->segname, "__LINKEDIT")) {
                     kernel_delta = seg->vmaddr - min - seg->fileoff;
