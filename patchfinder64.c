@@ -1071,55 +1071,16 @@ find_sysbootnonce(void)
 addr_t
 find_trustcache(void)
 {
-    addr_t cbz, call, func, val;
-    addr_t ref = find_strref("\"region to unlock not page aligned", 1, string_base_cstring);
-    if (ref) {
-        // iOS 12
-        ref -= kerndumpbase;
+    addr_t cbz, call, func, val, adrp;
+    int reg;
+    uint32_t op;
 
-        uint64_t adrp = step_adrp_to_reg(kernel, ref, 0x200, 26);
-        if (!adrp)
-            adrp = step_adrp_to_reg(kernel, ref, 0x200, 25);
-
-        if (!adrp)
-            return 0;
-
-        val = calc64(kernel, adrp, adrp + 8, 8);
-        if (!val)
-            return 0;
-
-        // Make sure cbz is after this
-        cbz = step64(kernel, adrp + 8, adrp + 12, INSN_CBZ);
-        if (!cbz)
-            return 0;
-
-        return val + 8 + kerndumpbase;
-    }
-    ref = find_strref("amfi_prevent_old_entitled_platform_binaries", 1, string_base_pstring);
+    addr_t ref = find_strref("%s: only allowed process can check the trust cache", 1, string_base_pstring); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
     if (!ref) {
-        // iOS 11
-        ref = find_strref("com.apple.MobileFileIntegrity", 1, string_base_pstring);
-        if (!ref) {
-            return 0;
-        }
-        ref -= kerndumpbase;
-        call = step64(kernel, ref, 64, INSN_CALL);
-        if (!call) {
-            return 0;
-        }
-        call = step64(kernel, call + 4, 64, INSN_CALL);
-        if (!call) {
-            return 0;
-        }
-        goto okay;
-    }
-    ref -= kerndumpbase;
-    cbz = step64(kernel, ref, 32, INSN_CBZ);
-    if (!cbz) {
         return 0;
     }
-    call = step64(kernel, follow_cbz(kernel, cbz), 4, INSN_CALL);
-okay:
+    ref -= kerndumpbase;
+    call = step64_back(kernel, ref, 11 * 4, INSN_CALL);
     if (!call) {
         return 0;
     }
@@ -1127,50 +1088,51 @@ okay:
     if (!func) {
         return 0;
     }
-    val = calc64(kernel, func, func + 16, 8);
+    call = step64(kernel, func, 8 * 4, INSN_CALL);
+    if (!call) {
+        return 0;
+    }
+    func = follow_call64(kernel, call);
+    if (!func) {
+        return 0;
+    }
+    call = step64(kernel, func, 8 * 4, INSN_CALL);
+    if (!call) {
+        return 0;
+    }
+    call = step64(kernel, call + 4, 8 * 4, INSN_CALL);
+    if (!call) {
+        return 0;
+    }
+    func = follow_call64(kernel, call);
+    if (!func) {
+        return 0;
+    }
+
+    call = step64(kernel, func, 12 * 4, INSN_CALL);
+    if (!call) {
+        return 0;
+    }
+
+    val = calc64(kernel, call, call + 6 * 4, 21);
     if (!val) {
-        ref = find_strref("%s: only allowed process can check the trust cache", 1, string_base_pstring); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
-        if (!ref) {
-            return 0;
-        }
-        ref -= kerndumpbase;
-        call = step64_back(kernel, ref, 11 * 4, INSN_CALL);
-        if (!call) {
-            return 0;
-        }
         func = follow_call64(kernel, call);
-        if (!func) {
-            return 0;
+        if (!monolithic_kernel) {
+            adrp = step64(kernel, func, 0x4, INSN_ADRP);
+            if (!adrp) return 0;
+            op = *(uint32_t*)(kernel + adrp);
+            reg = op&0x1F;
+            val = calc64(kernel, adrp, adrp + 0x8, reg);
+            func = *(addr_t *)(kernel + val) - kerndumpbase;
         }
-        call = step64(kernel, func, 8 * 4, INSN_CALL);
-        if (!call) {
-            return 0;
-        }
-        func = follow_call64(kernel, call);
-        if (!func) {
-            return 0;
-        }
-        call = step64(kernel, func, 8 * 4, INSN_CALL);
-        if (!call) {
-            return 0;
-        }
-        call = step64(kernel, call + 4, 8 * 4, INSN_CALL);
-        if (!call) {
-            return 0;
-        }
-        func = follow_call64(kernel, call);
-        if (!func) {
-            return 0;
-        }
-        call = step64(kernel, func, 12 * 4, INSN_CALL);
-        if (!call) {
-            return 0;
-        }
-        
-        val = calc64(kernel, call, call + 6 * 4, 21);
-        if (!val) {
-            return 0;
-        }
+        addr_t movw = step64(kernel, func, 0x300, 0x52800280, 0xffffffe0);
+        if (!movw) return 0;
+        adrp = step64_back(kernel, movw, 0x10, INSN_ADRP);
+        if (!adrp) return 0;
+        op = *(uint32_t*)(kernel + adrp + 4);
+        reg = op&0x1F;
+        val = calc64(kernel, adrp, movw, reg);
+        if (!val) return 0;
     }
     return val + kerndumpbase;
 }
