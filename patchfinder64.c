@@ -1138,15 +1138,9 @@ find_trustcache(void)
 
     val = calc64(kernel, call, call + 6 * 4, 21);
     if (!val) {
-        func = follow_call64(kernel, call);
-        if (!monolithic_kernel) {
-            adrp = step64(kernel, func, 0x4, INSN_ADRP);
-            if (!adrp) return 0;
-            op = *(uint32_t*)(kernel + adrp);
-            reg = op&0x1F;
-            val = calc64(kernel, adrp, adrp + 0x8, reg);
-            func = *(addr_t *)(kernel + val) - kerndumpbase;
-        }
+        func = follow_stub(kernel, call);
+        if (!func) return 0;
+        func -=  kerndumpbase;
         addr_t movw = step64(kernel, func, 0x300, 0x52800280, 0xffffffe0);
         if (!movw) return 0;
         adrp = step64_back(kernel, movw, 0x10, INSN_ADRP);
