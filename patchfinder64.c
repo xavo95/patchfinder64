@@ -1334,18 +1334,17 @@ find_realhost(addr_t priv)
  */ 
 
 addr_t find_vfs_context_current(void) {
-    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, string_base_cstring);
-    if (!error_str) return 0;
-    
-    error_str -= kerndumpbase;
+    addr_t str = find_strref("/private/var/tmp/wav%u_%uchans.wav", 1, string_base_pstring);
+    if (!str) return 0;
+    str -= kerndumpbase;
 
-    addr_t call_to_target = step64_back(kernel, error_str, 10*4, INSN_CALL);
-    if (!call_to_target) return 0;
-    
-    addr_t offset_to_target = follow_call64(kernel, call_to_target);
-    if (!offset_to_target) return 0;
+    addr_t func = bof64(kernel, prelink_base, str);
+    if (!func) return 0;
 
-    return offset_to_target + kerndumpbase;
+    addr_t call = step64(kernel, func, 0x100, INSN_CALL);
+    if (!call) return 0;
+        
+    return follow_stub(kernel, call);
 }
 
 addr_t find_vnode_lookup(void) {
