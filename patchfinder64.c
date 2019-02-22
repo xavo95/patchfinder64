@@ -523,11 +523,6 @@ follow_cbz(const uint8_t *buf, addr_t cbz)
 #include "mach-o_loader.h"
 #endif
 
-#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
-#include <mach/mach.h>
-size_t kread(uint64_t where, void *p, size_t size);
-#endif
-
 #ifdef VFS_H_included
 #define INVALID_HANDLE NULL
 static FHANDLE
@@ -578,26 +573,15 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
     addr_t min = -1;
     addr_t max = 0;
     int is64 = 0;
-    
-#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
-    if (!kread || !kernel_base) {
-        return -1;
-    }
-#else    /* __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ */
-    if (!filename) {
-        return -1;
-    }
-#endif    /* __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ */
 
     if (filename == NULL) {
-#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
+        if (!kread || !kernel_base) {
+            return -1;
+        }
         rv = kread(kernel_base, buf, sizeof(buf));
         if (rv != sizeof(buf) || !MACHO(buf)) {
             return -1;
         }
-#else
-        return -1;
-#endif
     } else {
         fd = OPEN(filename, O_RDONLY);
         if (fd == INVALID_HANDLE) {
@@ -690,7 +674,6 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
     kernel_size = max - min;
 
     if (filename == NULL) {
-#ifdef __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__
         kernel = malloc(kernel_size);
         if (!kernel) {
             return -1;
@@ -702,7 +685,6 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
         }
 
         kernel_mh = kernel + kernel_base - min;
-#endif
     } else {
         kernel = calloc(1, kernel_size);
         if (!kernel) {
