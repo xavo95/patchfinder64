@@ -1589,6 +1589,26 @@ addr_t find_csblob_entitlements_dictionary_set(void) {
 }
 
 addr_t find_kernel_task(void) {
+    if (monolithic_kernel) {
+        addr_t str = find_strref("\"shouldn't be applying exception notification", 2, string_base_cstring);
+        if (!str) return 0;
+        str -= kerndumpbase;
+
+        addr_t call = step64_back(kernel, str, 0x10, INSN_CALL);
+        if (!call) return 0;
+
+        addr_t task_suspend = follow_call64(kernel, call);
+        if (!task_suspend) return 0;
+
+        addr_t adrp = step64(kernel, task_suspend, 20*4, INSN_ADRP);
+        if (!adrp) return 0;
+
+        addr_t kern_task = calc64(kernel, adrp, adrp + 0x8, 8);
+        if (!kern_task) return 0;
+
+        return kern_task + kerndumpbase;
+    }
+
     addr_t term_str = find_strref("\"thread_terminate\"", 1, string_base_cstring);
     
     if (!term_str) {
@@ -1628,13 +1648,26 @@ addr_t find_kernproc(void) {
     
     ret_str -= kerndumpbase;
 
-    addr_t end_of_function = step64(kernel, ret_str, 20*4, INSN_RET);
-    
-    if (!end_of_function) {
-        return 0;
+    addr_t end;
+    int reg = 0;
+    if (monolithic_kernel) {
+        addr_t adrp = step64(kernel, ret_str, 20*4, INSN_ADRP);
+        if (!adrp) return 0;
+        uint32_t op = *(uint32_t*)(kernel + adrp + 4);
+        reg = op & 0x1f;
+
+        end = step64(kernel, adrp, 20*4, INSN_CALL);
+        if (!end) return 0;
+    } else {
+        reg = 19;
+        end = step64(kernel, ret_str, 20*4, INSN_RET);
+
+        if (!end) {
+            return 0;
+        }
     }
 
-    addr_t kernproc = calc64(kernel, ret_str, end_of_function, 19);
+    addr_t kernproc = calc64(kernel, ret_str, end, reg);
     
     if (!kernproc) {
         return 0;
@@ -1652,6 +1685,18 @@ addr_t find_vnode_recycle(void) {
     
     error_str -= kerndumpbase;
     
+    if (monolithic_kernel) {
+        addr_t tbnz = step64(kernel, error_str, 0x400, 0x37100000, 0xFFF80000);
+        if (!tbnz) return 0;
+
+        addr_t call_to_target = step64(kernel, tbnz + 4, 40*4, INSN_CALL);
+        if (!call_to_target) return 0;
+
+        addr_t func = follow_call64(kernel, call_to_target);
+        if (!func) return 0;
+        return func + kerndumpbase;
+    }
+
     addr_t call_to_lck_mtx_unlock = step64(kernel, error_str + 4, 40*4, INSN_CALL);
     
     if (!call_to_lck_mtx_unlock) {
