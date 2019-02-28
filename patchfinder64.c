@@ -13,7 +13,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-static bool auth_ptrs = false;
+bool auth_ptrs = false;
 typedef unsigned long long addr_t;
 static addr_t kerndumpbase = -1;
 static addr_t xnucore_base = 0;
