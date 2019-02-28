@@ -2231,6 +2231,24 @@ addr_t find_vnode_get_snapshot() {
 
     return func + kerndumpbase;
 }
+
+addr_t find_pmap_load_trust_cache() {
+    addr_t ref = find_strref("\"loadable trust cache buffer too small for header: %ld < %ld\"", 1, string_base_cstring);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t start = bof64(kernel, prelink_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+    
+    return start + kerndumpbase;
+}
 /*
  *
  *
@@ -2359,6 +2377,7 @@ main(int argc, char **argv)
     CHECK(mount_common);
     CHECK(fs_snapshot);
     CHECK(vnode_get_snapshot);
+    CHECK(pmap_load_trust_cache);
 
     term_kernel();
     return EXIT_SUCCESS;
