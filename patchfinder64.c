@@ -2255,8 +2255,6 @@ addr_t find_pmap_load_trust_cache() {
  *
  */
 
-#ifdef HAVE_MAIN
-
 #ifndef NOT_DARWIN
 #include <mach-o/nlist.h>
 #else
@@ -2313,7 +2311,7 @@ find_symbol(const char *symbol)
     return 0;
 }
 
-/* test **********************************************************************/
+#ifdef HAVE_MAIN
 
 int
 main(int argc, char **argv)
