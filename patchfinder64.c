@@ -1955,8 +1955,15 @@ addr_t find_osunserializexml(void)
     
     uint64_t start = bof64(kernel, xnucore_base, ref);
     
-    if (!start) {
-        return 0;
+    if (!start) return 0;
+
+    if (monolithic_kernel) {
+        ref = find_reference(start + kerndumpbase, 1, false);
+        if (!ref) return 0;
+        ref -= kerndumpbase;
+
+        start = bof64(kernel, xnucore_base, ref);
+        if (!start) return 0;
     }
     
     return start + kerndumpbase;
