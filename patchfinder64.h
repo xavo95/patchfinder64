@@ -1,6 +1,8 @@
 #ifndef PATCHFINDER64_H_
 #define PATCHFINDER64_H_
 
+#include <stdbool.h>
+
 extern bool auth_ptrs;
 extern bool monolithic_kernel;
 
@@ -63,6 +65,18 @@ uint64_t find_mount_common(void);
 uint64_t find_fs_snapshot(void);
 uint64_t find_vnode_get_snapshot(void);
 uint64_t find_pmap_load_trust_cache(void);
+uint64_t find_paciza_pointer__l2tp_domain_module_start(void);
+uint64_t find_paciza_pointer__l2tp_domain_module_stop(void);
+uint64_t find_l2tp_domain_inited(void);
+uint64_t find_sysctl__net_ppp_l2tp(void);
+uint64_t find_sysctl_unregister_oid(void);
+uint64_t find_mov_x0_x4__br_x5(void);
+uint64_t find_mov_x9_x0__br_x1(void);
+uint64_t find_mov_x10_x3__br_x6(void);
+uint64_t find_kernel_forge_pacia_gadget(void);
+uint64_t find_kernel_forge_pacda_gadget(void);
+uint64_t find_IOUserClient__vtable(void);
+uint64_t find_IORegistryEntry__getRegistryEntryID(void);
 
 uint64_t find_symbol(const char *symbol);
 

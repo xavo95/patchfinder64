@@ -26,6 +26,10 @@ static addr_t pstring_base = 0;
 static addr_t pstring_size = 0;
 static addr_t oslstring_base = 0;
 static addr_t oslstring_size = 0;
+static addr_t data_base = 0;
+static addr_t data_size = 0;
+static addr_t data_const_base = 0;
+static addr_t data_const_size = 0;
 static addr_t kernel_entry = 0;
 static void *kernel_mh = 0;
 static addr_t kernel_delta = 0;
@@ -445,6 +449,11 @@ calc64(const uint8_t *buf, addr_t start, addr_t end, int which)
             unsigned adr = (op & 0xFFFFE0) >> 3;
             //printf("%llx: LDR X%d, =0x%llx\n", i, reg, adr + i);
             value[reg] = adr + i;		// XXX address, not actual value
+        } else if ((op & 0xF9C00000) == 0xb9400000) { // 32bit
+            unsigned rn = (op >> 5) & 0x1F;
+            unsigned imm = ((op >> 10) & 0xFFF) << 2;
+            if (!imm) continue;            // XXX not counted as true xref
+            value[reg] = value[rn] + imm;    // XXX address, not actual value
         }
     }
     return value[which];
@@ -555,7 +564,8 @@ PREAD(FHANDLE fd, void *buf, size_t count, off_t offset)
 enum string_bases {
     string_base_cstring = 0,
     string_base_pstring,
-    string_base_oslstring
+    string_base_oslstring,
+    string_base_data
 };
 
 static uint8_t *kernel = NULL;
@@ -612,12 +622,10 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
             if (!strcmp(seg->segname, "__TEXT_EXEC")) {
                 xnucore_base = seg->vmaddr;
                 xnucore_size = seg->filesize;
-            }
-            if (!strcmp(seg->segname, "__PLK_TEXT_EXEC")) {
+            } else if (!strcmp(seg->segname, "__PLK_TEXT_EXEC")) {
                 prelink_base = seg->vmaddr;
                 prelink_size = seg->filesize;
-            }
-            if (!strcmp(seg->segname, "__TEXT")) {
+            } else if (!strcmp(seg->segname, "__TEXT")) {
                 const struct section_64 *sec = (struct section_64 *)(seg + 1);
                 for (j = 0; j < seg->nsects; j++) {
                     if (!strcmp(sec[j].sectname, "__cstring")) {
@@ -628,8 +636,7 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                         oslstring_size = sec[j].size;
                     }
                 }
-            }
-            if (!strcmp(seg->segname, "__PRELINK_TEXT")) {
+            } else if (!strcmp(seg->segname, "__PRELINK_TEXT")) {
                 const struct section_64 *sec = (struct section_64 *)(seg + 1);
                 for (j = 0; j < seg->nsects; j++) {
                     if (!strcmp(sec[j].sectname, "__text")) {
@@ -637,9 +644,24 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                         pstring_size = sec[j].size;
                     }
                 }
+            } else if (!strcmp(seg->segname, "__DATA_CONST")) {
+                const struct section_64 *sec = (struct section_64 *)(seg + 1);
+                for (j = 0; j < seg->nsects; j++) {
+                    if (!strcmp(sec[j].sectname, "__const")) {
+                        data_const_base = sec[j].addr;
+                        data_const_size = sec[j].size;
+                    }
+                }
+            } else if (!strcmp(seg->segname, "__DATA")) {
+                const struct section_64 *sec = (struct section_64 *)(seg + 1);
+                for (j = 0; j < seg->nsects; j++) {
+                    if (!strcmp(sec[j].sectname, "__data")) {
+                        data_base = sec[j].addr;
+                        data_size = sec[j].size;
+                    }
+                }
             }
-        }
-        if (cmd->cmd == LC_UNIXTHREAD) {
+        } else if (cmd->cmd == LC_UNIXTHREAD) {
             uint32_t *ptr = (uint32_t *)(cmd + 1);
             uint32_t flavor = ptr[0];
             struct {
@@ -671,6 +693,8 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
     cstring_base -= kerndumpbase;
     pstring_base -= kerndumpbase;
     oslstring_base -= kerndumpbase;
+    data_const_base -= kerndumpbase;
+    data_base -= kerndumpbase;
     kernel_size = max - min;
 
     if (filename == NULL) {
@@ -710,8 +734,7 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                 }
                 if (!strcmp(seg->segname, "__PPLDATA")) {
                     auth_ptrs = true;
-                }
-                if (!strcmp(seg->segname, "__LINKEDIT")) {
+                } else if (!strcmp(seg->segname, "__LINKEDIT")) {
                     kernel_delta = seg->vmaddr - min - seg->fileoff;
                 }
             }
@@ -782,7 +805,7 @@ find_reference(addr_t to, int n, int prelink)
 }
 
 addr_t
-find_strref(const char *string, int n, enum string_bases string_base)
+find_strref(const char *string, int n, enum string_bases string_base, bool full_match)
 {
     uint8_t *str;
     addr_t base;
@@ -807,7 +830,7 @@ find_strref(const char *string, int n, enum string_bases string_base)
     addr_t off = 0;
     while ((str = boyermoore_horspool_memmem(kernel + base + off, size - off, (uint8_t *)string, strlen(string)))) {
         // Only match the beginning of strings
-        if (str == kernel + base || *(str-1) == '\0')
+        if ((str == kernel + base || *(str-1) == '\0') && (!full_match || strcmp((char *)str, string) == 0))
             break;
         off = str - (kernel + base) + 1;
     }
@@ -821,7 +844,7 @@ addr_t
 find_gPhysBase(void)
 {
     addr_t ret, val;
-    addr_t ref = find_strref("\"pmap_map_high_window_bd: insufficient pages", 1, string_base_cstring);
+    addr_t ref = find_strref("\"pmap_map_high_window_bd: insufficient pages", 1, string_base_cstring, false);
     if (!ref) {
         return 0;
     }
@@ -849,7 +872,7 @@ addr_t
 find_kernel_pmap(void)
 {
     addr_t call, bof, val;
-    addr_t ref = find_strref("\"pmap_map_bd\"", 1, string_base_cstring);
+    addr_t ref = find_strref("\"pmap_map_bd\"", 1, string_base_cstring, false);
     if (!ref) {
         return 0;
     }
@@ -873,7 +896,7 @@ addr_t
 find_amfiret(void)
 {
     addr_t ret;
-    addr_t ref = find_strref("AMFI: hook..execve() killing pid %u: %s\n", 1, string_base_pstring);
+    addr_t ref = find_strref("AMFI: hook..execve() killing pid %u: %s\n", 1, string_base_pstring, false);
     if (!ref) {
         return 0;
     }
@@ -909,7 +932,7 @@ addr_t
 find_amfi_memcmpstub(void)
 {
     addr_t call, dest, reg;
-    addr_t ref = find_strref("%s: Possible race detected. Rejecting.", 1, string_base_pstring);
+    addr_t ref = find_strref("%s: Possible race detected. Rejecting.", 1, string_base_pstring, false);
     if (!ref) {
         return 0;
     }
@@ -950,7 +973,7 @@ addr_t
 find_lwvm_mapio_patch(void)
 {
     addr_t call, dest, reg;
-    addr_t ref = find_strref("_mapForIO", 1, string_base_pstring);
+    addr_t ref = find_strref("_mapForIO", 1, string_base_pstring, false);
     if (!ref) {
         return 0;
     }
@@ -978,7 +1001,7 @@ addr_t
 find_lwvm_mapio_newj(void)
 {
     addr_t call;
-    addr_t ref = find_strref("_mapForIO", 1, string_base_pstring);
+    addr_t ref = find_strref("_mapForIO", 1, string_base_pstring, false);
     if (!ref) {
         return 0;
     }
@@ -1081,7 +1104,7 @@ find_trustcache(void)
     int reg;
     uint32_t op;
 
-    addr_t ref = find_strref("%s: only allowed process can check the trust cache", 1, string_base_pstring); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
+    addr_t ref = find_strref("%s: only allowed process can check the trust cache", 1, string_base_pstring, false); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
     if (!ref) {
         return 0;
     }
@@ -1141,10 +1164,10 @@ addr_t
 find_amficache(void)
 {
     addr_t cbz, call, func, val;
-    addr_t ref = find_strref("amfi_prevent_old_entitled_platform_binaries", 1, string_base_pstring);
+    addr_t ref = find_strref("amfi_prevent_old_entitled_platform_binaries", 1, string_base_pstring, false);
     if (!ref) {
         // iOS 11
-        ref = find_strref("com.apple.MobileFileIntegrity", 1, string_base_pstring);
+        ref = find_strref("com.apple.MobileFileIntegrity", 1, string_base_pstring, false);
         if (!ref) {
             return 0;
         }
@@ -1172,7 +1195,7 @@ okay:
     }
     val = calc64(kernel, func, func + 16, 8);
     if (!val) {
-        ref = find_strref("%s: only allowed process can check the trust cache", 1, string_base_pstring); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
+        ref = find_strref("%s: only allowed process can check the trust cache", 1, string_base_pstring, false); // Trying to find AppleMobileFileIntegrityUserClient::isCdhashInTrustCache
         if (!ref) {
             return 0;
         }
@@ -1224,7 +1247,7 @@ addr_t
 find_AGXCommandQueue_vtable(void)
 {
     addr_t val, str8;
-    addr_t ref = find_strref("AGXCommandQueue", 1, string_base_pstring);
+    addr_t ref = find_strref("AGXCommandQueue", 1, string_base_pstring, false);
     if (!ref) {
         return 0;
     }
@@ -1251,8 +1274,8 @@ find_AGXCommandQueue_vtable(void)
 addr_t
 find_allproc(void)
 {
-    addr_t val, bof, str8;
-    addr_t ref = find_strref("\"pgrp_add : pgrp is dead adding process\"", 1, string_base_cstring);
+    addr_t val, bof;
+    addr_t ref = find_strref("\"pgrp_add : pgrp is dead adding process\"", 1, string_base_cstring, false);
     if (!ref) {
         return 0;
     }
@@ -1261,19 +1284,19 @@ find_allproc(void)
     if (!bof) {
         return 0;
     }
-    str8 = step64_back(kernel, ref, ref - bof, INSN_STR8);
-    if (!str8) {
-        // iOS 11
-        addr_t ldp = step64(kernel, ref, 1024, INSN_POPS);
-        if (!ldp) {
-            return 0;
-        }
-        str8 = step64_back(kernel, ldp, ldp - bof, INSN_STR8);
-        if (!str8) {
-            return 0;
+    // Find AND W8, W8, #0xFFFFDFFF - it's a pretty distinct instruction
+    addr_t weird_instruction = 0;
+    for (int i = 4; i < 5*0x100; i+=4) {
+        uint32_t op = *(uint32_t *)(kernel + ref + i);
+        if (op == 0x12127908) {
+            weird_instruction = ref+i;
+            break;
         }
     }
-    val = calc64(kernel, bof, str8, 8);
+    if (!weird_instruction) {
+        return 0;
+    }
+    val = calc64(kernel, bof, weird_instruction - 8, 8);
     if (!val) {
         return 0;
     }
@@ -1318,7 +1341,7 @@ find_realhost(addr_t priv)
  */ 
 
 addr_t find_vfs_context_current(void) {
-    addr_t str = find_strref("/private/var/tmp/wav%u_%uchans.wav", 1, string_base_pstring);
+    addr_t str = find_strref("/private/var/tmp/wav%u_%uchans.wav", 1, string_base_pstring, false);
     if (!str) return 0;
     str -= kerndumpbase;
 
@@ -1332,7 +1355,7 @@ addr_t find_vfs_context_current(void) {
 }
 
 addr_t find_vnode_lookup(void) {
-    addr_t hfs_str = find_strref("hfs: journal open cb: error %d looking up device %s (dev uuid %s)\n", 1, string_base_pstring);
+    addr_t hfs_str = find_strref("hfs: journal open cb: error %d looking up device %s (dev uuid %s)\n", 1, string_base_pstring, false);
     if (!hfs_str) return 0;
     
     hfs_str -= kerndumpbase;
@@ -1344,11 +1367,11 @@ addr_t find_vnode_lookup(void) {
 }
 
 addr_t find_vnode_put(void) {
-    addr_t err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, string_base_oslstring);
+    addr_t err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, string_base_oslstring, false);
     if (!err_str)
-        err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", 1, string_base_pstring);
+        err_str = find_strref("KBY: getparent(%p) != parent_vp(%p)", 1, string_base_pstring, false);
     if (!err_str)
-        err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, string_base_pstring);
+        err_str = find_strref("getparent(%p) != parent_vp(%p)", 1, string_base_pstring, false);
     
     if (!err_str) return 0;
 
@@ -1370,7 +1393,7 @@ addr_t find_vnode_getfromfd(void) {
     addr_t call1, call2, call3, call4, call5, call6, call7;
     addr_t func1;
 
-    addr_t ent_str = find_strref("rootless_storage_class_entitlement", 1, string_base_pstring);
+    addr_t ent_str = find_strref("rootless_storage_class_entitlement", 1, string_base_pstring, false);
     
     if (!ent_str) {
         return 0;
@@ -1421,7 +1444,7 @@ addr_t find_vnode_getfromfd(void) {
 }
 
 addr_t find_vnode_getattr(void) {
-    addr_t error_str = find_strref("\"add_fsevent: you can't pass me a NULL vnode ptr (type %d)!\\n\"", 1, string_base_cstring);
+    addr_t error_str = find_strref("\"add_fsevent: you can't pass me a NULL vnode ptr (type %d)!\\n\"", 1, string_base_cstring, false);
     
     if (!error_str) {
         return 0;
@@ -1446,7 +1469,7 @@ addr_t find_vnode_getattr(void) {
 }
 
 addr_t find_SHA1Init(void) {
-    addr_t id_str = find_strref("CrashReporter-ID", 1, string_base_pstring);
+    addr_t id_str = find_strref("CrashReporter-ID", 1, string_base_pstring, false);
     
     if (!id_str) {
         return 0;
@@ -1473,7 +1496,7 @@ addr_t find_SHA1Init(void) {
 }
 
 addr_t find_SHA1Update(void) {
-    addr_t id_str = find_strref("CrashReporter-ID", 1, string_base_pstring);
+    addr_t id_str = find_strref("CrashReporter-ID", 1, string_base_pstring, false);
     if (!id_str) {
         return 0;
     }
@@ -1506,7 +1529,7 @@ addr_t find_SHA1Update(void) {
 
 
 addr_t find_SHA1Final(void) {
-    addr_t id_str = find_strref("CrashReporter-ID", 1, string_base_pstring);
+    addr_t id_str = find_strref("CrashReporter-ID", 1, string_base_pstring, false);
     
     if (!id_str) {
         return 0;
@@ -1545,7 +1568,7 @@ addr_t find_SHA1Final(void) {
 }
 
 addr_t find_csblob_entitlements_dictionary_set(void) {
-    addr_t ent_str = find_strref("entitlements are not a dictionary", 1, string_base_pstring);
+    addr_t ent_str = find_strref("entitlements are not a dictionary", 1, string_base_pstring, false);
     
     if (!ent_str) {
         return 0;
@@ -1573,7 +1596,7 @@ addr_t find_csblob_entitlements_dictionary_set(void) {
 
 addr_t find_kernel_task(void) {
     if (monolithic_kernel) {
-        addr_t str = find_strref("\"shouldn't be applying exception notification", 2, string_base_cstring);
+        addr_t str = find_strref("\"shouldn't be applying exception notification", 2, string_base_cstring, false);
         if (!str) return 0;
         str -= kerndumpbase;
 
@@ -1592,7 +1615,7 @@ addr_t find_kernel_task(void) {
         return kern_task + kerndumpbase;
     }
 
-    addr_t term_str = find_strref("\"thread_terminate\"", 1, string_base_cstring);
+    addr_t term_str = find_strref("\"thread_terminate\"", 1, string_base_cstring, false);
     
     if (!term_str) {
         return 0;
@@ -1623,7 +1646,7 @@ addr_t find_kernel_task(void) {
 
 
 addr_t find_kernproc(void) {
-    addr_t ret_str = find_strref("\"returning child proc which is not cur_act\"", 1, string_base_cstring);
+    addr_t ret_str = find_strref("\"returning child proc which is not cur_act\"", 1, string_base_cstring, false);
     
     if (!ret_str) {
         return 0;
@@ -1660,7 +1683,7 @@ addr_t find_kernproc(void) {
 }
 
 addr_t find_vnode_recycle(void) {
-    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, string_base_cstring);
+    addr_t error_str = find_strref("\"vnode_put(%p): iocount < 1\"", 1, string_base_cstring, false);
     
     if (!error_str) {
         return 0;
@@ -1714,7 +1737,7 @@ addr_t find_vnode_recycle(void) {
 }
 
 addr_t find_lck_mtx_lock(void) {
-    addr_t strref = find_strref("nxprov_detacher", 1, string_base_cstring);
+    addr_t strref = find_strref("nxprov_detacher", 1, string_base_cstring, false);
     if (!strref) return 0;
     
     strref -= kerndumpbase;
@@ -1741,7 +1764,7 @@ addr_t find_lck_mtx_lock(void) {
 }
 
 addr_t find_lck_mtx_unlock(void) {
-    addr_t strref = find_strref("nxprov_detacher", 1, string_base_cstring);
+    addr_t strref = find_strref("nxprov_detacher", 1, string_base_cstring, false);
     if (!strref) return 0;
     
     strref -= kerndumpbase;
@@ -1759,7 +1782,7 @@ addr_t find_lck_mtx_unlock(void) {
 }
 
 addr_t find_strlen(void) {
-    addr_t xnu_str = find_strref("AP-xnu", 1, string_base_cstring);
+    addr_t xnu_str = find_strref("AP-xnu", 1, string_base_cstring, false);
     
     if (!xnu_str) {
         return 0;
@@ -1814,10 +1837,13 @@ addr_t find_add_x0_x0_0x40_ret(void)
  */ 
 
 addr_t find_boottime(void) {
-    addr_t ref = find_strref("%s WARNING: PMU offset is less then sys PMU", 1, string_base_oslstring);
+    addr_t ref = find_strref("%s WARNING: PMU offset is less then sys PMU", 1, string_base_oslstring, false);
     
     if (!ref) {
-        return 0;
+        ref = find_strref("%s WARNING: UTC time is less then sys time, (%lu s %d u) UTC (%lu s %d u) sys\n", 1, string_base_oslstring, false);
+        if (!ref) {
+            return 0;
+        }
     }
     
     ref -= kerndumpbase;
@@ -1872,7 +1898,7 @@ addr_t find_zone_map_ref(void)
     // \"Nothing being freed to the zone_map. start = end = %p\\n\"
     uint64_t val = kerndumpbase;
     
-    addr_t ref = find_strref("\"Nothing being freed to the zone_map. start = end = %p\\n\"", 1, string_base_cstring);
+    addr_t ref = find_strref("\"Nothing being freed to the zone_map. start = end = %p\\n\"", 1, string_base_cstring, false);
     
     if (!ref) {
         return 0;
@@ -1917,8 +1943,8 @@ addr_t find_zone_map_ref(void)
 addr_t find_OSBoolean_True(void)
 {
     addr_t val;
-    addr_t ref = find_strref("Delay Autounload", 2, string_base_cstring);
-    if (!ref) ref = find_strref("Delay Autounload", 1, string_base_cstring);
+    addr_t ref = find_strref("Delay Autounload", 2, string_base_cstring, false);
+    if (!ref) ref = find_strref("Delay Autounload", 1, string_base_cstring, false);
 
     if (!ref) {
         return 0;
@@ -1947,7 +1973,7 @@ addr_t find_OSBoolean_True(void)
 
 addr_t find_osunserializexml(void)
 {
-    addr_t ref = find_strref("OSUnserializeXML: %s near line %d\n", 1, string_base_cstring);
+    addr_t ref = find_strref("OSUnserializeXML: %s near line %d\n", 1, string_base_cstring, false);
     
     if (!ref) {
         return 0;
@@ -1973,8 +1999,8 @@ addr_t find_osunserializexml(void)
 
 addr_t find_smalloc(void)
 {
-    addr_t ref = find_strref("sandbox memory allocation failure", 1, string_base_pstring);
-    if (!ref) ref = find_strref("sandbox memory allocation failure", 1, string_base_oslstring);
+    addr_t ref = find_strref("sandbox memory allocation failure", 1, string_base_pstring, false);
+    if (!ref) ref = find_strref("sandbox memory allocation failure", 1, string_base_oslstring, false);
     
     if (!ref) {
         return 0;
@@ -1993,7 +2019,7 @@ addr_t find_smalloc(void)
 
 addr_t find_shenanigans(void)
 {
-    addr_t ref = find_strref("\"shenanigans!", 1, string_base_pstring);
+    addr_t ref = find_strref("\"shenanigans!", 1, string_base_pstring, false);
     
     if (!ref) {
         return 0;
@@ -2065,7 +2091,7 @@ addr_t find_shenanigans(void)
 
 addr_t find_move_snapshot_to_purgatory(void)
 {
-    addr_t ref = find_strref("move_snapshot_to_purgatory", 1, string_base_pstring);
+    addr_t ref = find_strref("move_snapshot_to_purgatory", 1, string_base_pstring, false);
     
     if (!ref) {
         return 0;
@@ -2084,7 +2110,7 @@ addr_t find_move_snapshot_to_purgatory(void)
 
 addr_t find_chgproccnt(void)
 {
-    addr_t ref = find_strref("\"chgproccnt: lost user\"", 1, string_base_cstring);
+    addr_t ref = find_strref("\"chgproccnt: lost user\"", 1, string_base_cstring, false);
     
     if (!ref) {
         return 0;
@@ -2103,7 +2129,7 @@ addr_t find_chgproccnt(void)
 
 addr_t find_kauth_cred_ref(void)
 {
-    addr_t ref = find_strref("\"kauth_cred_ref: trying to take a reference on a cred with no references\"", 1, string_base_cstring);
+    addr_t ref = find_strref("\"kauth_cred_ref: trying to take a reference on a cred with no references\"", 1, string_base_cstring, false);
     
     if (!ref) {
         return 0;
@@ -2122,7 +2148,7 @@ addr_t find_kauth_cred_ref(void)
 
 addr_t find_apfs_jhash_getvnode(void)
 {
-    addr_t ref = find_strref("apfs_jhash_getvnode", 1, string_base_pstring);
+    addr_t ref = find_strref("apfs_jhash_getvnode", 1, string_base_pstring, false);
     
     if (!ref) {
         return 0;
@@ -2140,7 +2166,7 @@ addr_t find_apfs_jhash_getvnode(void)
 }
 
 addr_t find_fs_lookup_snapshot_metadata_by_name() {
-    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, string_base_pstring), func = 0, call = 0;
+    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, string_base_pstring, false), func = 0, call = 0;
     if (!ref) return 0;
 
     ref -= kerndumpbase;
@@ -2159,7 +2185,7 @@ addr_t find_fs_lookup_snapshot_metadata_by_name() {
 }
 
 addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
-    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, string_base_pstring), func = 0, call = 0;
+    uint64_t ref = find_strref("%s:%d: fs_rename_snapshot('%s', %u, '%s', %u) returned %d", 1, string_base_pstring, false), func = 0, call = 0;
     if (!ref) return 0;
    
     ref -= kerndumpbase;
@@ -2189,7 +2215,7 @@ addr_t find_fs_lookup_snapshot_metadata_by_name_and_return_name() {
 }
 
 addr_t find_mount_common() {
-    uint64_t ref = find_strref("\"mount_common():", 1, string_base_cstring);
+    uint64_t ref = find_strref("\"mount_common():", 1, string_base_cstring, false);
     if (!ref) return 0;
     ref -= kerndumpbase;
     uint64_t func = bof64(kernel, xnucore_base, ref);
@@ -2242,10 +2268,13 @@ addr_t find_vnode_get_snapshot() {
 }
 
 addr_t find_pmap_load_trust_cache() {
-    addr_t ref = find_strref("\"loadable trust cache buffer too small for header: %ld < %ld\"", 1, string_base_cstring);
+    addr_t ref = find_strref("\"loadable trust cache buffer too small for header: %ld < %ld\"", 1, string_base_cstring, false);
     
     if (!ref) {
-        return 0;
+        ref = find_strref("\"loadable trust cache buffer too small (%ld) for entries claimed (%d)\"", 1, string_base_cstring, false);
+        if (!ref) {
+            return 0;
+        }
     }
     
     ref -= kerndumpbase;
@@ -2258,6 +2287,225 @@ addr_t find_pmap_load_trust_cache() {
     
     return start + kerndumpbase;
 }
+
+addr_t find_paciza_pointer__l2tp_domain_module_start() {
+    uint64_t string = (uint64_t)boyermoore_horspool_memmem(kernel + data_base, data_size, (const unsigned char *)"com.apple.driver.AppleSynopsysOTGDevice", strlen("com.apple.driver.AppleSynopsysOTGDevice")) - (uint64_t)kernel;
+    
+    if (!string) {
+        return 0;
+    }
+    
+    return string + kerndumpbase - 0x20;
+}
+
+addr_t find_paciza_pointer__l2tp_domain_module_stop() {
+    uint64_t string = (uint64_t)boyermoore_horspool_memmem(kernel + data_base, data_size, (const unsigned char *)"com.apple.driver.AppleSynopsysOTGDevice", strlen("com.apple.driver.AppleSynopsysOTGDevice")) - (uint64_t)kernel;
+    
+    if (!string) {
+        return 0;
+    }
+    
+    return string + kerndumpbase - 0x18;
+}
+
+uint64_t find_l2tp_domain_inited() {
+    uint64_t ref = find_strref("L2TP domain init\n", 1, string_base_cstring, false);
+    
+    if (!ref) {
+        return 0;
+    }
+    ref -= kerndumpbase;
+    
+    uint64_t addr = calc64(kernel, ref, ref + 32, 8);
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr + kerndumpbase;
+}
+
+uint64_t find_sysctl__net_ppp_l2tp() {
+    uint64_t ref = find_strref("L2TP domain terminate : PF_PPP domain does not exist...\n", 1, string_base_cstring, false);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    ref += 4;
+    
+    uint64_t addr = calc64(kernel, ref, ref + 28, 0);
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr + kerndumpbase;
+}
+
+uint64_t find_sysctl_unregister_oid() {
+    uint64_t ref = find_strref("L2TP domain terminate : PF_PPP domain does not exist...\n", 1, string_base_cstring, false);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t addr = step64(kernel, ref, 28, INSN_CALL);
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    addr += 4;
+    addr = step64(kernel, addr, 28, INSN_CALL);
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    uint64_t call = follow_call64(kernel, addr);
+    if (!call) {
+        return 0;
+    }
+    return call + kerndumpbase;
+}
+
+uint64_t find_mov_x0_x4__br_x5() {
+    uint32_t bytes[] = {
+        0xaa0403e0, // mov x0, x4
+        0xd61f00a0  // br x5
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_mov_x9_x0__br_x1() {
+    uint32_t bytes[] = {
+        0xaa0003e9, // mov x9, x0
+        0xd61f0020  // br x1
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_mov_x10_x3__br_x6() {
+    uint32_t bytes[] = {
+        0xaa0303ea, // mov x10, x3
+        0xd61f00c0  // br x6
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_kernel_forge_pacia_gadget() {
+    uint32_t bytes[] = {
+        0xdac10149, // paci
+        0xf9007849  // str x9, [x2, #240]
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_kernel_forge_pacda_gadget() {
+    uint32_t bytes[] = {
+        0xdac10949, // pacd x9
+        0xf9007449  // str x9, [x2, #232]
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_IOUserClient__vtable() {
+    uint64_t ref1 = find_strref("IOUserClient", 2, string_base_cstring, true);
+    
+    if (!ref1) {
+        return 0;
+    }
+    
+    ref1 -= kerndumpbase;
+    
+    uint64_t ref2 = find_strref("IOUserClient", 3, string_base_cstring, true);
+    
+    if (!ref2) {
+        return 0;
+    }
+    
+    ref2 -= kerndumpbase;
+    
+    uint64_t func2 = bof64(kernel, xnucore_base, ref2);
+    
+    if (!func2) {
+        return 0;
+    }
+    
+    uint64_t vtable = calc64(kernel, ref1, func2, 8);
+    
+    if (!vtable) {
+        return 0;
+    }
+    
+    return vtable + kerndumpbase;
+}
+
+uint64_t find_IORegistryEntry__getRegistryEntryID() {
+    uint32_t bytes[] = {
+        0xf9400808, // ldr x8, [x0, #0x10]
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    // basically just look the instructions
+    // can't find a better way
+    // this was not done like the previous gadgets because an address is being used, which won't be the same between devices so can't be hardcoded and i gotta use masks
+    
+    // cbz x8, SOME_ADDRESS <= where we do masking (((*(uint32_t *)(addr + 4)) & 0xFC000000) != 0xb4000000)
+    // ldr x0, [x8, #8]     <= 2nd part of 0xd65f03c0f9400500
+    // ret                  <= 1st part of 0xd65f03c0f9400500
+    
+    while ((((*(uint32_t *)(addr + 4)) & 0xFC000000) != 0xb4000000) || (*(uint64_t*)(addr + 8) != 0xd65f03c0f9400500)) {
+        addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)(addr + 4), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    }
+    
+    return addr + kerndumpbase - (uint64_t)kernel;;
+}
+
 /*
  *
  *
@@ -2385,6 +2633,21 @@ main(int argc, char **argv)
     CHECK(fs_snapshot);
     CHECK(vnode_get_snapshot);
     CHECK(pmap_load_trust_cache);
+    CHECK(boottime);
+    if (auth_ptrs) {
+        CHECK(paciza_pointer__l2tp_domain_module_start);
+        CHECK(paciza_pointer__l2tp_domain_module_stop);
+        CHECK(l2tp_domain_inited);
+        CHECK(sysctl__net_ppp_l2tp);
+        CHECK(sysctl_unregister_oid);
+        CHECK(mov_x0_x4__br_x5);
+        CHECK(mov_x9_x0__br_x1);
+        CHECK(mov_x10_x3__br_x6);
+        CHECK(kernel_forge_pacia_gadget);
+        CHECK(kernel_forge_pacda_gadget);
+    }
+    CHECK(IOUserClient__vtable);
+    CHECK(IORegistryEntry__getRegistryEntryID);
 
     term_kernel();
     return EXIT_SUCCESS;
