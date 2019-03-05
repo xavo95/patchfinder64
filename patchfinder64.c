@@ -1251,7 +1251,7 @@ find_AGXCommandQueue_vtable(void)
 addr_t
 find_allproc(void)
 {
-    addr_t val, bof, str8;
+    addr_t val, bof;
     addr_t ref = find_strref("\"pgrp_add : pgrp is dead adding process\"", 1, string_base_cstring);
     if (!ref) {
         return 0;
@@ -1261,19 +1261,19 @@ find_allproc(void)
     if (!bof) {
         return 0;
     }
-    str8 = step64_back(kernel, ref, ref - bof, INSN_STR8);
-    if (!str8) {
-        // iOS 11
-        addr_t ldp = step64(kernel, ref, 1024, INSN_POPS);
-        if (!ldp) {
-            return 0;
-        }
-        str8 = step64_back(kernel, ldp, ldp - bof, INSN_STR8);
-        if (!str8) {
-            return 0;
+    // Find AND W8, W8, #0xFFFFDFFF - it's a pretty distinct instruction
+    addr_t weird_instruction = 0;
+    for (int i = 4; i < 5*0x100; i+=4) {
+        uint32_t op = *(uint32_t *)(kernel + ref + i);
+        if (op == 0x12127908) {
+            weird_instruction = ref+i;
+            break;
         }
     }
-    val = calc64(kernel, bof, str8, 8);
+    if (!weird_instruction) {
+        return 0;
+    }
+    val = calc64(kernel, bof, weird_instruction - 8, 8);
     if (!val) {
         return 0;
     }
