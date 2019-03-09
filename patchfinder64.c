@@ -1817,7 +1817,10 @@ addr_t find_boottime(void) {
     addr_t ref = find_strref("%s WARNING: PMU offset is less then sys PMU", 1, string_base_oslstring);
     
     if (!ref) {
-        return 0;
+        ref = find_strref("%s WARNING: UTC time is less then sys time, (%lu s %d u) UTC (%lu s %d u) sys\n", 1, string_base_oslstring);
+        if (!ref) {
+            return 0;
+        }
     }
     
     ref -= kerndumpbase;
@@ -2245,7 +2248,10 @@ addr_t find_pmap_load_trust_cache() {
     addr_t ref = find_strref("\"loadable trust cache buffer too small for header: %ld < %ld\"", 1, string_base_cstring);
     
     if (!ref) {
-        return 0;
+        ref = find_strref("\"loadable trust cache buffer too small (%ld) for entries claimed (%d)\"", 1, string_base_cstring);
+        if (!ref) {
+            return 0;
+        }
     }
     
     ref -= kerndumpbase;
@@ -2385,6 +2391,7 @@ main(int argc, char **argv)
     CHECK(fs_snapshot);
     CHECK(vnode_get_snapshot);
     CHECK(pmap_load_trust_cache);
+    CHECK(boottime);
 
     term_kernel();
     return EXIT_SUCCESS;
