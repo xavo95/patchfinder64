@@ -26,6 +26,10 @@ static addr_t pstring_base = 0;
 static addr_t pstring_size = 0;
 static addr_t oslstring_base = 0;
 static addr_t oslstring_size = 0;
+static addr_t data_base = 0;
+static addr_t data_size = 0;
+static addr_t data_const_base = 0;
+static addr_t data_const_size = 0;
 static addr_t kernel_entry = 0;
 static void *kernel_mh = 0;
 static addr_t kernel_delta = 0;
@@ -445,6 +449,11 @@ calc64(const uint8_t *buf, addr_t start, addr_t end, int which)
             unsigned adr = (op & 0xFFFFE0) >> 3;
             //printf("%llx: LDR X%d, =0x%llx\n", i, reg, adr + i);
             value[reg] = adr + i;		// XXX address, not actual value
+        } else if ((op & 0xF9C00000) == 0xb9400000) { // 32bit
+            unsigned rn = (op >> 5) & 0x1F;
+            unsigned imm = ((op >> 10) & 0xFFF) << 2;
+            if (!imm) continue;            // XXX not counted as true xref
+            value[reg] = value[rn] + imm;    // XXX address, not actual value
         }
     }
     return value[which];
@@ -555,7 +564,8 @@ PREAD(FHANDLE fd, void *buf, size_t count, off_t offset)
 enum string_bases {
     string_base_cstring = 0,
     string_base_pstring,
-    string_base_oslstring
+    string_base_oslstring,
+    string_base_data
 };
 
 static uint8_t *kernel = NULL;
@@ -634,6 +644,22 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                         pstring_size = sec[j].size;
                     }
                 }
+            } else if (!strcmp(seg->segname, "__DATA_CONST")) {
+                const struct section_64 *sec = (struct section_64 *)(seg + 1);
+                for (j = 0; j < seg->nsects; j++) {
+                    if (!strcmp(sec[j].sectname, "__const")) {
+                        data_const_base = sec[j].addr;
+                        data_const_size = sec[j].size;
+                    }
+                }
+            } else if (!strcmp(seg->segname, "__DATA")) {
+                const struct section_64 *sec = (struct section_64 *)(seg + 1);
+                for (j = 0; j < seg->nsects; j++) {
+                    if (!strcmp(sec[j].sectname, "__data")) {
+                        data_base = sec[j].addr;
+                        data_size = sec[j].size;
+                    }
+                }
             }
         } else if (cmd->cmd == LC_UNIXTHREAD) {
             uint32_t *ptr = (uint32_t *)(cmd + 1);
@@ -667,6 +693,8 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
     cstring_base -= kerndumpbase;
     pstring_base -= kerndumpbase;
     oslstring_base -= kerndumpbase;
+    data_const_base -= kerndumpbase;
+    data_base -= kerndumpbase;
     kernel_size = max - min;
 
     if (filename == NULL) {
@@ -2259,6 +2287,225 @@ addr_t find_pmap_load_trust_cache() {
     
     return start + kerndumpbase;
 }
+
+addr_t find_paciza_pointer__l2tp_domain_module_start() {
+    uint64_t string = (uint64_t)boyermoore_horspool_memmem(kernel + data_base, data_size, (const unsigned char *)"com.apple.driver.AppleSynopsysOTGDevice", strlen("com.apple.driver.AppleSynopsysOTGDevice")) - (uint64_t)kernel;
+    
+    if (!string) {
+        return 0;
+    }
+    
+    return string + kerndumpbase - 0x20;
+}
+
+addr_t find_paciza_pointer__l2tp_domain_module_stop() {
+    uint64_t string = (uint64_t)boyermoore_horspool_memmem(kernel + data_base, data_size, (const unsigned char *)"com.apple.driver.AppleSynopsysOTGDevice", strlen("com.apple.driver.AppleSynopsysOTGDevice")) - (uint64_t)kernel;
+    
+    if (!string) {
+        return 0;
+    }
+    
+    return string + kerndumpbase - 0x18;
+}
+
+uint64_t find_l2tp_domain_inited() {
+    uint64_t ref = find_strref("L2TP domain init\n", 1, string_base_cstring);
+    
+    if (!ref) {
+        return 0;
+    }
+    ref -= kerndumpbase;
+    
+    uint64_t addr = calc64(kernel, ref, ref + 32, 8);
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr + kerndumpbase;
+}
+
+uint64_t find_sysctl__net_ppp_l2tp() {
+    uint64_t ref = find_strref("L2TP domain terminate : PF_PPP domain does not exist...\n", 1, string_base_cstring);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    ref += 4;
+    
+    uint64_t addr = calc64(kernel, ref, ref + 28, 0);
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr + kerndumpbase;
+}
+
+uint64_t find_sysctl_unregister_oid() {
+    uint64_t ref = find_strref("L2TP domain terminate : PF_PPP domain does not exist...\n", 1, string_base_cstring);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t addr = step64(kernel, ref, 28, INSN_CALL);
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    addr += 4;
+    addr = step64(kernel, addr, 28, INSN_CALL);
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    uint64_t call = follow_call64(kernel, addr);
+    if (!call) {
+        return 0;
+    }
+    return call + kerndumpbase;
+}
+
+uint64_t find_mov_x0_x4__br_x5() {
+    uint32_t bytes[] = {
+        0xaa0403e0, // mov x0, x4
+        0xd61f00a0  // br x5
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_mov_x9_x0__br_x1() {
+    uint32_t bytes[] = {
+        0xaa0003e9, // mov x9, x0
+        0xd61f0020  // br x1
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_mov_x10_x3__br_x6() {
+    uint32_t bytes[] = {
+        0xaa0303ea, // mov x10, x3
+        0xd61f00c0  // br x6
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_kernel_forge_pacia_gadget() {
+    uint32_t bytes[] = {
+        0xdac10149, // paci
+        0xf9007849  // str x9, [x2, #240]
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_kernel_forge_pacda_gadget() {
+    uint32_t bytes[] = {
+        0xdac10949, // pacd x9
+        0xf9007449  // str x9, [x2, #232]
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr - (uint64_t)kernel + kerndumpbase;
+}
+
+uint64_t find_IOUserClient__vtable() {
+    uint64_t ref1 = find_strref("IOUserClient", 2, string_base_cstring);
+    
+    if (!ref1) {
+        return 0;
+    }
+    
+    ref1 -= kerndumpbase;
+    
+    uint64_t ref2 = find_strref("IOUserClient", 3, string_base_cstring);
+    
+    if (!ref2) {
+        return 0;
+    }
+    
+    ref2 -= kerndumpbase;
+    
+    uint64_t func2 = bof64(kernel, xnucore_base, ref2);
+    
+    if (!func2) {
+        return 0;
+    }
+    
+    uint64_t vtable = calc64(kernel, ref1, func2, 8);
+    
+    if (!vtable) {
+        return 0;
+    }
+    
+    return vtable + kerndumpbase;
+}
+
+uint64_t find_IORegistryEntry__getRegistryEntryID() {
+    uint32_t bytes[] = {
+        0xf9400808, // ldr x8, [x0, #0x10]
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    
+    if (!addr) {
+        return 0;
+    }
+    
+    // basically just look the instructions
+    // can't find a better way
+    // this was not done like the previous gadgets because an address is being used, which won't be the same between devices so can't be hardcoded and i gotta use masks
+    
+    // cbz x8, SOME_ADDRESS <= where we do masking (((*(uint32_t *)(addr + 4)) & 0xFC000000) != 0xb4000000)
+    // ldr x0, [x8, #8]     <= 2nd part of 0xd65f03c0f9400500
+    // ret                  <= 1st part of 0xd65f03c0f9400500
+    
+    while ((((*(uint32_t *)(addr + 4)) & 0xFC000000) != 0xb4000000) || (*(uint64_t*)(addr + 8) != 0xd65f03c0f9400500)) {
+        addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)(addr + 4), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    }
+    
+    return addr + kerndumpbase - (uint64_t)kernel;;
+}
+
 /*
  *
  *
