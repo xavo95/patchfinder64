@@ -612,12 +612,10 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
             if (!strcmp(seg->segname, "__TEXT_EXEC")) {
                 xnucore_base = seg->vmaddr;
                 xnucore_size = seg->filesize;
-            }
-            if (!strcmp(seg->segname, "__PLK_TEXT_EXEC")) {
+            } else if (!strcmp(seg->segname, "__PLK_TEXT_EXEC")) {
                 prelink_base = seg->vmaddr;
                 prelink_size = seg->filesize;
-            }
-            if (!strcmp(seg->segname, "__TEXT")) {
+            } else if (!strcmp(seg->segname, "__TEXT")) {
                 const struct section_64 *sec = (struct section_64 *)(seg + 1);
                 for (j = 0; j < seg->nsects; j++) {
                     if (!strcmp(sec[j].sectname, "__cstring")) {
@@ -628,8 +626,7 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                         oslstring_size = sec[j].size;
                     }
                 }
-            }
-            if (!strcmp(seg->segname, "__PRELINK_TEXT")) {
+            } else if (!strcmp(seg->segname, "__PRELINK_TEXT")) {
                 const struct section_64 *sec = (struct section_64 *)(seg + 1);
                 for (j = 0; j < seg->nsects; j++) {
                     if (!strcmp(sec[j].sectname, "__text")) {
@@ -638,8 +635,7 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                     }
                 }
             }
-        }
-        if (cmd->cmd == LC_UNIXTHREAD) {
+        } else if (cmd->cmd == LC_UNIXTHREAD) {
             uint32_t *ptr = (uint32_t *)(cmd + 1);
             uint32_t flavor = ptr[0];
             struct {
@@ -710,8 +706,7 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                 }
                 if (!strcmp(seg->segname, "__PPLDATA")) {
                     auth_ptrs = true;
-                }
-                if (!strcmp(seg->segname, "__LINKEDIT")) {
+                } else if (!strcmp(seg->segname, "__LINKEDIT")) {
                     kernel_delta = seg->vmaddr - min - seg->fileoff;
                 }
             }
