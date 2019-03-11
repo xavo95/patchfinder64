@@ -2645,9 +2645,9 @@ main(int argc, char **argv)
         CHECK(mov_x10_x3__br_x6);
         CHECK(kernel_forge_pacia_gadget);
         CHECK(kernel_forge_pacda_gadget);
-        CHECK(IOUserClient__vtable);
-        CHECK(IORegistryEntry__getRegistryEntryID);
     }
+    CHECK(IOUserClient__vtable);
+    CHECK(IORegistryEntry__getRegistryEntryID);
 
     term_kernel();
     return EXIT_SUCCESS;
