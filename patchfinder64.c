@@ -2634,6 +2634,20 @@ main(int argc, char **argv)
     CHECK(vnode_get_snapshot);
     CHECK(pmap_load_trust_cache);
     CHECK(boottime);
+    if (auth_ptrs) {
+        CHECK(paciza_pointer__l2tp_domain_module_start);
+        CHECK(paciza_pointer__l2tp_domain_module_stop);
+        CHECK(l2tp_domain_inited);
+        CHECK(sysctl__net_ppp_l2tp);
+        CHECK(sysctl_unregister_oid);
+        CHECK(mov_x0_x4__br_x5);
+        CHECK(mov_x9_x0__br_x1);
+        CHECK(mov_x10_x3__br_x6);
+        CHECK(kernel_forge_pacia_gadget);
+        CHECK(kernel_forge_pacda_gadget);
+        CHECK(IOUserClient__vtable);
+        CHECK(IORegistryEntry__getRegistryEntryID);
+    }
 
     term_kernel();
     return EXIT_SUCCESS;
