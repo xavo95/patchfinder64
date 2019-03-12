@@ -30,6 +30,8 @@ static addr_t data_base = 0;
 static addr_t data_size = 0;
 static addr_t data_const_base = 0;
 static addr_t data_const_size = 0;
+static addr_t const_base = 0;
+static addr_t const_size = 0;
 static addr_t kernel_entry = 0;
 static void *kernel_mh = 0;
 static addr_t kernel_delta = 0;
@@ -565,7 +567,8 @@ enum string_bases {
     string_base_cstring = 0,
     string_base_pstring,
     string_base_oslstring,
-    string_base_data
+    string_base_data,
+    string_base_const
 };
 
 static uint8_t *kernel = NULL;
@@ -634,6 +637,9 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
                     } else if (!strcmp(sec[j].sectname, "__os_log")) {
                         oslstring_base = sec[j].addr;
                         oslstring_size = sec[j].size;
+                    } else if (!strcmp(sec[j].sectname, "__const")) {
+                        const_base = sec[j].addr;
+                        const_size = sec[j].size;
                     }
                 }
             } else if (!strcmp(seg->segname, "__PRELINK_TEXT")) {
@@ -695,6 +701,7 @@ init_kernel(size_t (*kread)(uint64_t, void *, size_t), addr_t kernel_base, const
     oslstring_base -= kerndumpbase;
     data_const_base -= kerndumpbase;
     data_base -= kerndumpbase;
+    const_base -= kerndumpbase;
     kernel_size = max - min;
 
     if (filename == NULL) {
@@ -812,6 +819,14 @@ find_strref(const char *string, int n, enum string_bases string_base, bool full_
     addr_t size;
     int prelink = 0;
     switch (string_base) {
+        case string_base_const:
+            base = const_base;
+            size = const_size;
+            break;
+        case string_base_data:
+            base = data_base;
+            size = data_size;
+            break;
         case string_base_oslstring:
             base = oslstring_base;
             size = oslstring_size;
@@ -2648,7 +2663,7 @@ main(int argc, char **argv)
     }
     CHECK(IOUserClient__vtable);
     CHECK(IORegistryEntry__getRegistryEntryID);
-
+    
     term_kernel();
     return EXIT_SUCCESS;
 }
