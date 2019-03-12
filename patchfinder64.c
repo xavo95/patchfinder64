@@ -10,8 +10,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
-#include <stdbool.h>
-#include <stdio.h>
+#include "patchfinder64.h"
 
 bool auth_ptrs = false;
 typedef unsigned long long addr_t;
@@ -562,14 +561,6 @@ PREAD(FHANDLE fd, void *buf, size_t count, off_t offset)
 #define READ read
 #define PREAD pread
 #endif
-
-enum string_bases {
-    string_base_cstring = 0,
-    string_base_pstring,
-    string_base_oslstring,
-    string_base_data,
-    string_base_const
-};
 
 static uint8_t *kernel = NULL;
 static size_t kernel_size = 0;
