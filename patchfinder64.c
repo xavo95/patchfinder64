@@ -2527,6 +2527,18 @@ uint64_t find_IORegistryEntry__getRegistryEntryID() {
     return addr + kerndumpbase - (uint64_t)kernel;;
 }
 
+addr_t find_pmap_loaded_trust_caches() {
+    addr_t ref = find_strref("\"loadable trust cache buffer too small (%ld) for entries claimed (%d)\"", 1, string_base_cstring, false, true);
+    if (!ref) return 0;
+    
+    ref -= kerndumpbase;
+    
+    addr_t val = calc64(kernel, ref-32*4, ref-24*4, 8);
+    if (!val) return 0;
+    
+    return val + kerndumpbase;
+}
+
 /*
  *
  *
@@ -2653,7 +2665,6 @@ main(int argc, char **argv)
     CHECK(mount_common);
     CHECK(fs_snapshot);
     CHECK(vnode_get_snapshot);
-    CHECK(pmap_load_trust_cache);
     CHECK(boottime);
     if (auth_ptrs) {
         CHECK(paciza_pointer__l2tp_domain_module_start);
@@ -2666,6 +2677,8 @@ main(int argc, char **argv)
         CHECK(mov_x10_x3__br_x6);
         CHECK(kernel_forge_pacia_gadget);
         CHECK(kernel_forge_pacda_gadget);
+        CHECK(pmap_load_trust_cache);
+        CHECK(pmap_loaded_trust_caches);
     }
     CHECK(IOUserClient__vtable);
     CHECK(IORegistryEntry__getRegistryEntryID);
