@@ -10,6 +10,12 @@ extern bool monolithic_kernel;
 int init_kernel(size_t (*kread)(uint64_t, void *, size_t), uint64_t kernel_base, const char *filename);
 void term_kernel(void);
 
+enum text_bases {
+    text_xnucore_base = 0,
+    text_prelink_base,
+    text_ppl_base
+};
+
 enum string_bases {
     string_base_cstring = 0,
     string_base_pstring,
@@ -19,8 +25,8 @@ enum string_bases {
 };
 
 uint64_t find_register_value(uint64_t where, int reg);
-uint64_t find_reference(uint64_t to, int n, int prelink);
-uint64_t find_strref(const char *string, int n, enum string_bases string_base, bool full_match);
+uint64_t find_reference(uint64_t to, int n, enum text_bases base);
+uint64_t find_strref(const char *string, int n, enum string_bases string_base, bool full_match, bool ppl_base);
 uint64_t find_gPhysBase(void);
 uint64_t find_kernel_pmap(void);
 uint64_t find_amfiret(void);
