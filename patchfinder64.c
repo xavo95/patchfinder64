@@ -2297,6 +2297,26 @@ addr_t find_vnode_get_snapshot() {
 }
 
 addr_t find_pmap_load_trust_cache() {
+    if (auth_ptrs) {
+        addr_t ref = find_strref("%s: trust cache already loaded, ignoring", 2, 0, false, false);
+        if (!ref) ref = find_strref("%s: trust cache already loaded, ignoring", 1, 0, false, false);
+        if (!ref) return 0;
+        
+        ref -= kerndumpbase;
+        
+        addr_t func = step64_back(kernel, ref, 200, INSN_CALL);
+        if (!func) return 0;
+        
+        func -= 4;
+        
+        func = step64_back(kernel, func, 200, INSN_CALL);
+        if (!func) return 0;
+        
+        func = follow_call64(kernel, func);
+        if (!func) return 0;
+        
+        return func + kerndumpbase;
+    }
     addr_t ref = find_strref("\"loadable trust cache buffer too small (%ld) for entries claimed (%d)\"", 1, string_base_cstring, false, true);
     if (!ref) return 0;
     
