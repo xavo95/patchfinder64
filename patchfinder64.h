@@ -90,6 +90,7 @@ uint64_t find_kernel_forge_pacia_gadget(void);
 uint64_t find_kernel_forge_pacda_gadget(void);
 uint64_t find_IOUserClient__vtable(void);
 uint64_t find_IORegistryEntry__getRegistryEntryID(void);
+uint64_t find_pmap_loaded_trust_caches(void);
 
 uint64_t find_symbol(const char *symbol);
 
