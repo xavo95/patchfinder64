@@ -1129,6 +1129,18 @@ find_sysbootnonce(void)
 addr_t
 find_trustcache(void)
 {
+    if (auth_ptrs) {
+        addr_t ref = find_strref("\"loadable trust cache buffer too small (%ld) for entries claimed (%d)\"", 1, string_base_cstring, false, true);
+        if (!ref) return 0;
+    
+        ref -= kerndumpbase;
+
+        addr_t val = calc64(kernel, ref-32*4, ref-24*4, 8);
+        if (!val) return 0;
+
+        return val + kerndumpbase;
+    }
+
     addr_t cbz, call, func, val, adrp;
     int reg;
     uint32_t op;
@@ -2547,18 +2559,6 @@ uint64_t find_IORegistryEntry__getRegistryEntryID() {
     return addr + kerndumpbase - (uint64_t)kernel;;
 }
 
-addr_t find_pmap_loaded_trust_caches() {
-    addr_t ref = find_strref("\"loadable trust cache buffer too small (%ld) for entries claimed (%d)\"", 1, string_base_cstring, false, true);
-    if (!ref) return 0;
-    
-    ref -= kerndumpbase;
-    
-    addr_t val = calc64(kernel, ref-32*4, ref-24*4, 8);
-    if (!val) return 0;
-    
-    return val + kerndumpbase;
-}
-
 /*
  *
  *
@@ -2698,7 +2698,6 @@ main(int argc, char **argv)
         CHECK(kernel_forge_pacia_gadget);
         CHECK(kernel_forge_pacda_gadget);
         CHECK(pmap_load_trust_cache);
-        CHECK(pmap_loaded_trust_caches);
     }
     CHECK(IOUserClient__vtable);
     CHECK(IORegistryEntry__getRegistryEntryID);
