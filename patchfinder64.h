@@ -90,7 +90,12 @@ uint64_t find_kernel_forge_pacia_gadget(void);
 uint64_t find_kernel_forge_pacda_gadget(void);
 uint64_t find_IOUserClient__vtable(void);
 uint64_t find_IORegistryEntry__getRegistryEntryID(void);
-uint64_t find_pmap_loaded_trust_caches(void);
+uint64_t find_cs_blob_generation_count(void);
+uint64_t find_cs_find_md(void);
+uint64_t find_cs_validate_csblob(void);
+uint64_t find_kalloc_canblock(void);
+uint64_t find_ubc_cs_blob_allocate_site(void);
+uint64_t find_kfree(void);
 
 uint64_t find_symbol(const char *symbol);
 

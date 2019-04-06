@@ -2559,6 +2559,202 @@ uint64_t find_IORegistryEntry__getRegistryEntryID() {
     return addr + kerndumpbase - (uint64_t)kernel;;
 }
 
+addr_t find_cs_blob_generation_count() {
+    uint64_t ref = find_strref("CS Platform Exec Logging: Executing platform signed binary '%s'", 1, 2, false, false);
+    if (!ref) {
+        return 0;
+    }
+    ref -= kerndumpbase;
+    
+    uint64_t addr = step64(kernel, ref, 200, INSN_ADRP);
+    if (!addr) {
+        addr = step64(kernel, ref, 200, INSN_CALL);
+        if (!addr) {
+            return 0;
+        }
+        
+        addr = step64(kernel, addr + 4, 200, INSN_CALL);
+        if (!addr) {
+            return 0;
+        }
+        
+        addr = step64(kernel, addr + 4, 200, INSN_CALL);
+        if (!addr) {
+            return 0;
+        }
+        
+        addr = step64(kernel, addr + 4, 200, INSN_CALL);
+        if (!addr) {
+            return 0;
+        }
+        
+        addr = follow_call64(kernel, addr);
+        if (!addr) {
+            return 0;
+        }
+        
+        addr = step64(kernel, addr, 200, INSN_ADRP);
+        if (!addr) {
+            return 0;
+        }
+        
+        addr = calc64(kernel, addr - 4, addr + 8, 9);
+        if (!addr) {
+            return 0;
+        }
+        
+        return addr + kerndumpbase;
+    }
+    
+    addr = calc64(kernel, addr, addr + 12, 25);
+    if (!addr) {
+        addr = step64(kernel, ref, 200, INSN_ADRP);
+        addr = calc64(kernel, addr, addr + 12, 9);
+    }
+    
+    return addr + kerndumpbase;
+}
+
+addr_t find_cs_find_md() {
+    
+    uint32_t bytes[] = {
+        0xb9400008, // ldr w8, [x0]
+        0x529bdf49, // mov w9, #0xdefa
+        0x72a04189, // movk w9, #0x20c, lsl#16
+        0x6b09011f  // cmp w8, w9
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    if (!addr) {
+        return 0;
+    }
+    
+    addr -= (uint64_t)kernel;
+    
+    uint64_t adrp = step64(kernel, addr, 200, INSN_ADRP);
+    if (!adrp) {
+        return 0;
+    }
+    
+    adrp += 4;
+    
+    uint64_t adrp2 = step64(kernel, adrp, 200, INSN_ADRP);
+    if (adrp2) {
+        adrp = adrp2; // non-A12
+    }
+    
+    addr = calc64(kernel, adrp - 4, adrp + 8, 9);
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr + kerndumpbase;
+}
+
+
+addr_t find_cs_validate_csblob() {
+    
+    uint32_t bytes[] = {
+        0x52818049, // mov w9, #0xC02
+        0x72bf5bc9, // movk w9, #0xfade, lsl#16
+        0x6b09011f  // cmp w8, w9
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    if (!addr) {
+        return 0;
+    }
+    
+    addr -= (uint64_t)kernel;
+    addr = bof64(kernel, xnucore_base, addr);
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr + kerndumpbase;
+}
+
+addr_t find_kalloc_canblock() {
+    
+    uint32_t bytes[] = {
+        0xaa0003f3, // mov x19, x0
+        0xf9400274, // ldr x20, [x19]
+        0xf11fbe9f  // cmp x20, #0x7ef
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    if (!addr) {
+        return 0;
+    }
+    addr -= (uint64_t)kernel;
+    
+    addr = bof64(kernel, xnucore_base, addr);
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr + kerndumpbase;
+}
+
+addr_t find_ubc_cs_blob_allocate_site() {
+    uint32_t bytes[] = {
+        0xd2adfc0d,
+        0xf2c0002d
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    if (!addr) {
+        return 0;
+    }
+    addr -= (uint64_t)kernel;
+    
+    uint64_t kalloc = find_kalloc_canblock();
+    if (!kalloc) {
+        return 0;
+    }
+    
+    do {
+        addr = step64(kernel, addr + 4, 1000, INSN_CALL);
+        if (!addr) {
+            return 0;
+        }
+    } while (follow_call64(kernel, addr) + kerndumpbase != kalloc);
+    
+    addr = step64_back(kernel, addr, 20, INSN_ADRP);
+    if (!addr) {
+        return 0;
+    }
+    
+    addr = calc64(kernel, addr, addr + 8, 2);
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr + kerndumpbase;
+}
+
+addr_t find_kfree() {
+    
+    uint32_t bytes[] = {
+        0xaa0103f3,
+        0xaa0003f4,
+        0xf11fbe7f
+    };
+    
+    uint64_t addr = (uint64_t)boyermoore_horspool_memmem((unsigned char *)((uint64_t)kernel + xnucore_base), xnucore_size, (const unsigned char *)bytes, sizeof(bytes));
+    if (!addr) {
+        return 0;
+    }
+    addr -= (uint64_t)kernel;
+    
+    addr = bof64(kernel, xnucore_base, addr);
+    if (!addr) {
+        return 0;
+    }
+    
+    return addr + kerndumpbase;
+}
+
 /*
  *
  *
@@ -2701,6 +2897,12 @@ main(int argc, char **argv)
     }
     CHECK(IOUserClient__vtable);
     CHECK(IORegistryEntry__getRegistryEntryID);
+    CHECK(cs_blob_generation_count);
+    CHECK(cs_find_md);
+    CHECK(cs_validate_csblob);
+    CHECK(kalloc_canblock);
+    CHECK(ubc_cs_blob_allocate_site);
+    CHECK(kfree);
     
     term_kernel();
     return EXIT_SUCCESS;
