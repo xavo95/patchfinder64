@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/syscall.h>
 #include "patchfinder64.h"
 
 bool auth_ptrs = false;
@@ -521,6 +522,16 @@ static addr_t
 follow_cbz(const uint8_t *buf, addr_t cbz)
 {
     return cbz + ((*(int *)(buf + cbz) & 0x3FFFFE0) << 10 >> 13);
+}
+
+static addr_t
+remove_pac(addr_t addr)
+{
+    if (addr >= kerndumpbase) return addr;
+    if (addr >> 56 == 0x80) {
+        return (addr&0xffffffff) + kerndumpbase;
+    }
+    return addr |= 0xfffffff000000000;
 }
 
 /* kernel iOS10 **************************************************************/
@@ -2124,6 +2135,130 @@ addr_t find_shenanigans(void)
  *
  */
 
+addr_t find_unix_syscall(void)
+{
+    addr_t ref = find_strref("SW_STEP_DEBUG exception thread DebugData is NULL", 1, string_base_cstring, false, false);
+    if (!ref) return 0;
+    ref -= kerndumpbase;
+
+    // Find LDR             X2, [XN,#0x3B0|#0x3B8]
+    ref = step64_back(kernel, ref, 0x20, 0xF941D802, 0xFFFFF81F);
+    if (!ref) return 0;
+
+    uint64_t call = step64(kernel, ref, 0x20, INSN_CALL);
+    if (!call) return 0;
+
+    addr_t func = follow_call64(kernel, call);
+    if (!func) return 0;
+
+    return func + kerndumpbase;
+}
+
+addr_t find_pthread_kext_register(void)
+{
+    addr_t ref = find_strref("\"Re-initialisation of pthread kext callbacks.\"", 1, string_base_cstring, true, false);
+    if (!ref) return 0;
+    ref -= kerndumpbase;
+
+    uint64_t start = bof64(kernel, xnucore_base, ref);
+    if (!start) return 0;
+    return start + kerndumpbase;
+}
+
+// This can be used to find any functions referenced by struct pthread_callbacks_s
+addr_t find_pthread_callbacks(void)
+{
+    // Cache this one //
+    static addr_t addr = 0;
+    if (addr) {
+        return addr + kerndumpbase;
+    }
+
+    addr_t ref = find_pthread_kext_register();
+    if (!ref) return 0;
+    ref -= kerndumpbase;
+
+    for (int i=0; i<3; i++) {
+        ref = step64(kernel, ref+4, 0x30, INSN_ADRP);
+        if (!ref) return 0;
+    }
+
+    addr = calc64(kernel, ref, ref + 8, 8);
+    if (!addr) return 0;
+    return addr + kerndumpbase;
+}
+
+addr_t find_unix_syscall_return(void)
+{
+    addr_t pthread_callbacks = find_pthread_callbacks();
+    if (!pthread_callbacks) return 0;
+    pthread_callbacks -= kerndumpbase;
+
+    addr_t addr = *(uint64_t*)(kernel + pthread_callbacks + 8 + 0x31 * 8);
+    if (!addr) return 0;
+    return remove_pac(addr);
+}
+
+addr_t find_sysent(void)
+{
+    static addr_t sysent = 0;
+    if (sysent) return sysent + kerndumpbase;
+
+    addr_t unix_syscall_return = find_unix_syscall_return();
+    if (!unix_syscall_return) return 0;
+    unix_syscall_return -= kerndumpbase;
+
+    addr_t csel = step64(kernel, unix_syscall_return, 0x200, 0x1A800000, 0x7FE00C00);
+    if (!csel) return 0;
+
+    int reg = (*(uint64_t *)(kernel + csel) >> 16) & 0x1F;
+
+    sysent = calc64(kernel, unix_syscall_return, csel-12, reg);
+    if (!sysent) return 0;
+
+    return sysent + kerndumpbase;
+}
+
+addr_t find_syscall(int n)
+{
+    addr_t sysent = find_sysent();
+    if (!sysent) return 0;
+    sysent -= kerndumpbase;
+
+    addr_t syscall = *(addr_t*)(kernel + sysent + 3 * sizeof(addr_t) * n);
+    if (!syscall) return 0;
+    return remove_pac(syscall);
+}
+
+addr_t find_proc_find(void) {
+    addr_t getpgid = find_syscall(SYS_getpgid);
+    if (!getpgid) return 0;
+    getpgid -= kerndumpbase;
+
+    addr_t call = step64(kernel, getpgid, 0x50, INSN_CALL);
+    if (!call) return 0;
+
+    addr_t func = follow_call64(kernel, call);
+    if (!func) return 0;
+    return func + kerndumpbase;
+}
+
+addr_t find_proc_rele(void) {
+    addr_t getpgid = find_syscall(SYS_getpgid);
+    if (!getpgid) return 0;
+    getpgid -= kerndumpbase;
+
+    addr_t call = step64(kernel, getpgid, 0x50, INSN_CALL);
+    if (!call) return 0;
+
+    call = step64(kernel, call+4, 0x50, INSN_CALL);
+    if (!call) return 0;
+
+    addr_t func = follow_call64(kernel, call);
+    if (!func) return 0;
+    return func + kerndumpbase;
+}
+
 /*
  *
  * @pwn20wnd's patches
@@ -2888,6 +3023,12 @@ main(int argc, char **argv)
     } \
 } while(false)
     
+    CHECK(unix_syscall_return);
+    CHECK(pthread_kext_register);
+    CHECK(pthread_callbacks);
+    CHECK(sysent);
+    CHECK(proc_find);
+    CHECK(proc_rele);
     CHECK(vfs_context_current);
     CHECK(vnode_lookup);
     CHECK(vnode_put);

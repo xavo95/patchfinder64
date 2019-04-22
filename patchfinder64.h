@@ -98,6 +98,14 @@ uint64_t find_ubc_cs_blob_allocate_site(void);
 uint64_t find_kfree(void);
 uint64_t find_hook_cred_label_update_execve(void);
 uint64_t find_flow_divert_connect_out(void);
+uint64_t find_pmap_loaded_trust_caches(void);
+uint64_t find_unix_syscall(void);
+uint64_t find_pthread_kext_register(void);
+uint64_t find_pthread_callbacks(void);
+uint64_t find_unix_syscall_return(void);
+uint64_t find_sysent(void);
+uint64_t find_syscall(int n);
+uint64_t find_proc_find(void);
 
 uint64_t find_symbol(const char *symbol);
 
