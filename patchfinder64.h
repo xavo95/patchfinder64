@@ -96,6 +96,7 @@ uint64_t find_cs_validate_csblob(void);
 uint64_t find_kalloc_canblock(void);
 uint64_t find_ubc_cs_blob_allocate_site(void);
 uint64_t find_kfree(void);
+uint64_t find_hook_cred_label_update_execve(void);
 
 uint64_t find_symbol(const char *symbol);
 

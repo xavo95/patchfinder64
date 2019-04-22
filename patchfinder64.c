@@ -2755,6 +2755,24 @@ addr_t find_kfree() {
     return addr + kerndumpbase;
 }
 
+addr_t find_hook_cred_label_update_execve() {
+    addr_t ref = find_strref("only launchd is allowed to spawn untrusted binaries", 1, string_base_pstring, false, false);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t start = bof64(kernel, prelink_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+    
+    return start + kerndumpbase;
+}
+
 /*
  *
  *
@@ -2903,6 +2921,7 @@ main(int argc, char **argv)
     CHECK(kalloc_canblock);
     CHECK(ubc_cs_blob_allocate_site);
     CHECK(kfree);
+    CHECK(hook_cred_label_update_execve);
     
     term_kernel();
     return EXIT_SUCCESS;
