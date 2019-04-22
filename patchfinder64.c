@@ -2773,6 +2773,23 @@ addr_t find_hook_cred_label_update_execve() {
     return start + kerndumpbase;
 }
 
+addr_t find_flow_divert_connect_out() {
+    addr_t ref = find_strref("(%u): Sending saved connect packet\n", 1, string_base_oslstring, false, false);
+    
+    if (!ref) {
+        return 0;
+    }
+    
+    ref -= kerndumpbase;
+    
+    uint64_t start = bof64(kernel, xnucore_base, ref);
+    
+    if (!start) {
+        return 0;
+    }
+    
+    return start + kerndumpbase;
+}
 /*
  *
  *
@@ -2922,6 +2939,7 @@ main(int argc, char **argv)
     CHECK(ubc_cs_blob_allocate_site);
     CHECK(kfree);
     CHECK(hook_cred_label_update_execve);
+    CHECK(flow_divert_connect_out);
     
     term_kernel();
     return EXIT_SUCCESS;
