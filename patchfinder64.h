@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stddef.h>
 
 extern bool auth_ptrs;
 extern bool monolithic_kernel;
@@ -106,6 +107,9 @@ uint64_t find_unix_syscall_return(void);
 uint64_t find_sysent(void);
 uint64_t find_syscall(int n);
 uint64_t find_proc_find(void);
+// EX: find_mpo(cred_label_update_execve)
+#define find_mpo(name) find_mpo_entry(offsetof(struct mac_policy_ops, mpo_ ##name))
+uint64_t find_mpo_entry(uint64_t offset);
 
 uint64_t find_symbol(const char *symbol);
 

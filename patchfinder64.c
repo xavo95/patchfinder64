@@ -11,6 +11,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/syscall.h>
+#include "mac_policy.h"
 #include "patchfinder64.h"
 
 bool auth_ptrs = false;
@@ -2199,6 +2200,62 @@ addr_t find_unix_syscall_return(void)
     return remove_pac(addr);
 }
 
+addr_t find_kmod_start(void)
+{
+    addr_t ref = find_strref("kern_return_t kmod_start(kmod_info_t *, void *)", 1, string_base_pstring, true, false);
+    if (!ref) return 0;
+    ref -= kerndumpbase;
+
+    addr_t func = bof64(kernel, prelink_base, ref);
+    if (!func) return 0;
+    return func + kerndumpbase;
+}
+
+addr_t find_policy_conf(void)
+{
+    addr_t kmod_start = find_kmod_start();
+    if (!kmod_start) return 0;
+    kmod_start -= kerndumpbase;
+
+    addr_t eof = step64(kernel, kmod_start, 0x500, 0x910003FF, 0xFF0003FF);
+    if (!eof) return 0;
+
+    addr_t insn = step64(kernel, kmod_start, eof-kmod_start, 0xD2800002, 0xFFFFFFFF);
+    if (!insn) return 0;
+
+    addr_t ref = step64_back(kernel, insn, 0x10, 0x90000000, 0x9F00001F);
+    if (!ref) return 0;
+    
+    addr_t addr = calc64(kernel, ref, ref+8, 0);
+    if (!addr) return 0;
+    return addr + kerndumpbase;
+}
+
+addr_t find_policy_ops(void)
+{
+    static struct mac_policy_conf *conf = NULL;
+    if (!conf) {
+        addr_t policy_conf_ref = find_policy_conf();
+        if (!policy_conf_ref) return 0;
+        conf = (struct mac_policy_conf *)(policy_conf_ref - kerndumpbase + kernel);
+    }
+
+    addr_t ops = conf->mpc_ops;
+    if (!ops) return 0;
+    return remove_pac(ops);
+}
+
+addr_t find_mpo_entry(addr_t offset)
+{
+    addr_t ops = find_policy_ops();
+    if (!ops) return 0;
+    ops -= kerndumpbase;
+    
+    addr_t opref = *(addr_t *)(ops + kernel + offset);
+    if (!opref) return 0;
+    return remove_pac(opref);
+}
+
 addr_t find_sysent(void)
 {
     static addr_t sysent = 0;
@@ -3023,6 +3080,10 @@ main(int argc, char **argv)
     } \
 } while(false)
     
+    CHECK(kmod_start);
+    CHECK(policy_conf);
+    CHECK(policy_ops);
+    CHECK(kmod_start);
     CHECK(unix_syscall_return);
     CHECK(pthread_kext_register);
     CHECK(pthread_callbacks);
