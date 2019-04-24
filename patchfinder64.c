@@ -2394,6 +2394,34 @@ addr_t find_sfree(void)
     return func + kerndumpbase;
 }
 
+addr_t find_sb_ustate_create(void)
+{
+    addr_t ref = find_strref("sb_ustate_create", 1, string_base_pstring, true, false);
+    if (!ref) return 0;
+    ref -= kerndumpbase;
+
+    addr_t func = bof64(kernel, prelink_base, ref);
+    if (!func) return 0;
+    return func + kerndumpbase;
+}
+
+addr_t find_sstrdup(void)
+{
+    addr_t sb_ustate_create = find_sb_ustate_create();
+    if (!sb_ustate_create) return 0;
+    sb_ustate_create -= kerndumpbase;
+
+    addr_t call = sb_ustate_create;
+    for (int i=0; i<2; i++) {
+        call = step64(kernel, call+4, 0x50, INSN_CALL);
+        if (!call) return 0;
+    }
+
+    addr_t func = follow_call64(kernel, call);
+    if (!func) return 0;
+    return func + kerndumpbase;
+}
+
 addr_t find_sysent(void)
 {
     static addr_t sysent = 0;
@@ -3229,6 +3257,7 @@ main(int argc, char **argv)
     CHECK(extension_release);
     CHECK(unix_syscall_return);
     CHECK(sfree);
+    CHECK(sstrdup);
     CHECK(pthread_kext_register);
     CHECK(pthread_callbacks);
     CHECK(sysent);
