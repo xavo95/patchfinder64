@@ -117,6 +117,7 @@ uint64_t find_platform_set_container(void);
 uint64_t find_extension_create_file(void);
 uint64_t find_extension_add(void);
 uint64_t find_extension_release(void);
+uint64_t find_sfree(void);
 
 uint64_t find_symbol(const char *symbol);
 

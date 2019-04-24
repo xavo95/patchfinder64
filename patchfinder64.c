@@ -2380,6 +2380,20 @@ addr_t find_extension_release(void)
     return func + kerndumpbase;
 }
 
+addr_t find_sfree(void)
+{
+    addr_t extension_release = find_extension_release();
+    if (!extension_release) return 0;
+    extension_release -= kerndumpbase;
+
+    addr_t call = step64(kernel, extension_release, 0x100, INSN_CALL);
+    if (!call) return 0;
+
+    addr_t func = follow_call64(kernel, call);
+    if (!func) return 0;
+    return func + kerndumpbase;
+}
+
 addr_t find_sysent(void)
 {
     static addr_t sysent = 0;
@@ -3213,8 +3227,8 @@ main(int argc, char **argv)
     CHECK(extension_create_file);
     CHECK(extension_add);
     CHECK(extension_release);
-    exit(0);
     CHECK(unix_syscall_return);
+    CHECK(sfree);
     CHECK(pthread_kext_register);
     CHECK(pthread_callbacks);
     CHECK(sysent);
