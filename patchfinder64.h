@@ -110,6 +110,13 @@ uint64_t find_proc_find(void);
 // EX: find_mpo(cred_label_update_execve)
 #define find_mpo(name) find_mpo_entry(offsetof(struct mac_policy_ops, mpo_ ##name))
 uint64_t find_mpo_entry(uint64_t offset);
+uint64_t find_hook_policy_syscall(int n);
+uint64_t find_syscall_set_profile(void);
+uint64_t find_sandbox_set_container_copyin(void);
+uint64_t find_platform_set_container(void);
+uint64_t find_extension_create_file(void);
+uint64_t find_extension_add(void);
+uint64_t find_extension_release(void);
 
 uint64_t find_symbol(const char *symbol);
 
