@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stddef.h>
 
 extern bool auth_ptrs;
 extern bool monolithic_kernel;
@@ -96,6 +97,27 @@ uint64_t find_cs_validate_csblob(void);
 uint64_t find_kalloc_canblock(void);
 uint64_t find_ubc_cs_blob_allocate_site(void);
 uint64_t find_kfree(void);
+uint64_t find_hook_cred_label_update_execve(void);
+uint64_t find_flow_divert_connect_out(void);
+uint64_t find_pmap_loaded_trust_caches(void);
+uint64_t find_unix_syscall(void);
+uint64_t find_pthread_kext_register(void);
+uint64_t find_pthread_callbacks(void);
+uint64_t find_unix_syscall_return(void);
+uint64_t find_sysent(void);
+uint64_t find_syscall(int n);
+uint64_t find_proc_find(void);
+// EX: find_mpo(cred_label_update_execve)
+#define find_mpo(name) find_mpo_entry(offsetof(struct mac_policy_ops, mpo_ ##name))
+uint64_t find_mpo_entry(uint64_t offset);
+uint64_t find_hook_policy_syscall(int n);
+uint64_t find_syscall_set_profile(void);
+uint64_t find_sandbox_set_container_copyin(void);
+uint64_t find_platform_set_container(void);
+uint64_t find_extension_create_file(void);
+uint64_t find_extension_add(void);
+uint64_t find_extension_release(void);
+uint64_t find_sfree(void);
 
 uint64_t find_symbol(const char *symbol);
 
